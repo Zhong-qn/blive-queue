@@ -1,0 +1,3 @@
+[submodule "supports/blive-api-c"]
+	path = supports/blive-api-c
+	url = git@github.com:Zhong-qn/blive-api-c.git
