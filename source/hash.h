@@ -40,7 +40,10 @@ typedef uint32_t (*hash_func)(const char *key);
 typedef Bool (*hash_cb)(const char *key, const void* value, void* context);
 
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 /**
  * @brief 创建一个哈希表
@@ -105,5 +108,7 @@ int32_t hash_count(hash_t *ht);
  */
 void hash_foreach(hash_t *ht, hash_cb callback, void* context);
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
 #endif

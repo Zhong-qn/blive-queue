@@ -33,7 +33,10 @@ typedef void (*select_schedule_cb)(void* context);
 typedef void (*select_fd_cb)(fd_t fd, void* context);
 
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 /**
  * @brief 创建一个基于select实现的事件引擎
@@ -110,5 +113,7 @@ int select_engine_fd_add_forever(select_engine_t* engine, fd_t fd, select_fd_cb 
  */
 int select_engine_fd_del(select_engine_t* engine, fd_t fd);
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
 #endif

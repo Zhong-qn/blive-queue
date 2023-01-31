@@ -91,11 +91,11 @@ static void __expand_array(hash_t *hash_table)
 }
 
 
-errno_t hash_create(hash_t **out, uint32_t size, hash_func hash_func)
+blive_errno_t hash_create(hash_t **out, uint32_t size, hash_func hash_func)
 {
     uint32_t    max_size = 0;
     hash_t*  hash_table = NULL;
-    errno_t  retval = BLIVE_ERR_OK;
+    blive_errno_t  retval = BLIVE_ERR_OK;
 
     if (out == NULL) {
         return BLIVE_ERR_NULLPTR;
@@ -131,9 +131,9 @@ errno_t hash_create(hash_t **out, uint32_t size, hash_func hash_func)
 }
 
 
-errno_t hash_destroy(hash_t *hash_table)
+blive_errno_t hash_destroy(hash_t *hash_table)
 {
-    errno_t          retval = BLIVE_ERR_OK;
+    blive_errno_t          retval = BLIVE_ERR_OK;
     hash_entry_t*    entry = NULL;
 
     if (hash_table == NULL) {

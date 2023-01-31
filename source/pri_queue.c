@@ -129,7 +129,7 @@ int pri_queue_peek(pri_queue_t * pri_queue, void** pdata)
         retval = BLIVE_ERR_RESOURCE;
     }
     pthread_mutex_unlock(&pri_queue->mutex);
-    printf("peek data address %p\n", *pdata);
+    // printf("peek data address %p\n", *pdata);
 
 _out:
     return retval;
@@ -161,7 +161,7 @@ int pri_queue_push(pri_queue_t * pri_queue, void* data)
 
     pthread_cond_broadcast(&pri_queue->cond);
     pthread_mutex_unlock(&pri_queue->mutex);
-    printf("push data address %p\n", data);
+    // printf("push data address %p\n", data);
 
 _out:
     return retval;

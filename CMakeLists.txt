@@ -54,6 +54,7 @@ endif()
 
 # 创建可执行文件路径
 if (DEFINED BLIVE_QUEUE_EXEC_OUT_PATH)
+set(EXECUTABLE_OUTPUT_PATH ${BLIVE_QUEUE_EXEC_OUT_PATH})
 message("already difined executable file directory: ${BLIVE_QUEUE_EXEC_OUT_PATH}")
 else()
 message("not difined executable file directory, using default:  ${BLIVE_QUEUE_DIR}/CMakeCaches/")
@@ -69,8 +70,11 @@ link_directories(./build/output/lib/)
 set(BLIVE_QUEUE_SRC     ${BLIVE_QUEUE_DIR}/source/main.c
                         ${BLIVE_QUEUE_DIR}/source/hash.c
                         ${BLIVE_QUEUE_DIR}/source/pri_queue.c
+                        ${BLIVE_QUEUE_DIR}/source/callbacks.c
                         ${BLIVE_QUEUE_DIR}/source/select.c)
 
+
+file(COPY  ${BLIVE_QUEUE_DIR}/config/pdjcfg.json   DESTINATION ${EXECUTABLE_OUTPUT_PATH}/config)
 
 add_compile_options(-g -Wall -fPIC)
 
@@ -81,5 +85,4 @@ add_executable(blive_queue ${BLIVE_QUEUE_SRC})
 target_link_libraries(blive_queue pthread  blive_api_s)
 if(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
     target_link_libraries(blive_queue ws2_32)
-    target_link_libraries(blive_queue_s ws2_32)
 endif()

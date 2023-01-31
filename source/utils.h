@@ -26,7 +26,8 @@
 })
 
 #ifdef WIN32
-typedef void*   fd_t;
+#include <winsock2.h>
+typedef SOCKET   fd_t;
 #else
 typedef int fd_t;
 #endif
@@ -39,10 +40,13 @@ typedef enum blive_standard_errno_e {
     BLIVE_ERR_NULLPTR = -2,    /* 空指针错误 */
     BLIVE_ERR_UNKNOWN = -1,    /* 未知的错误 */
     BLIVE_ERR_OK = 0,          /* 无错误发生 */
-} errno_t;
+} blive_errno_t;
 
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 static inline void* zero_alloc(size_t size)
 {
@@ -54,5 +58,7 @@ static inline void* zero_alloc(size_t size)
     return mem;
 }
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
 #endif

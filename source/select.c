@@ -15,7 +15,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#ifdef WIN32
+#include <winsock2.h>
+#else
 #include <sys/ioctl.h>
+#endif
 
 #include "hash.h"
 #include "pri_queue.h"
@@ -47,11 +51,13 @@ struct select_engine_t {
     pri_queue_t      *event_queue;
     hash_t           *fd_poll;
     fd_set              read_fds;
+#ifndef WIN32
     fd_t             max_fd;
+#endif
     Bool           need_continue;
     Bool           has_reset;
     pthread_mutex_t     running_flag;   /* 是否在运行的标志位 */
-    int32_t             manage_pipe[2];
+    fd_t             manage_pipe[2];
 };
 
 
@@ -64,9 +70,151 @@ static void __manage_fd_callback(fd_t manage_fd, void* context);
 static void __engine_reload(select_engine_t* engine);
 static int __engine_fd_add(select_engine_t* engine, fd_t fd, select_fd_cb callback, void* context, Bool temporary);
 int __engine_fd_del(select_engine_t* engine, fd_t fd);
+#ifdef WIN32
+#include <ws2tcpip.h>
+
+static int __stream_socketpair(struct addrinfo* addr_info, SOCKET sock[2])
+{
+    SOCKET listener, client, server;
+    int opt = 1;
+
+    listener = server = client = INVALID_SOCKET;
+    listener = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol); //创建服务器socket并进行绑定监听等
+    if (INVALID_SOCKET == listener)
+        goto fail;
+
+    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR,(const char*)&opt, sizeof(opt));
+
+    if(SOCKET_ERROR == bind(listener, addr_info->ai_addr, addr_info->ai_addrlen))
+        goto fail;
+
+    if (SOCKET_ERROR == getsockname(listener, addr_info->ai_addr, (int*)&addr_info->ai_addrlen))
+        goto fail;
+
+    if(SOCKET_ERROR == listen(listener, 5))
+        goto fail;
+
+    client = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol); //创建客户端socket，并连接服务器
+
+    if (INVALID_SOCKET == client)
+        goto fail;
+
+    if (SOCKET_ERROR == connect(client,addr_info->ai_addr,addr_info->ai_addrlen))
+        goto fail;
+
+    server = accept(listener, 0, 0);
+
+    if (INVALID_SOCKET == server)
+        goto fail;
+
+    closesocket(listener);
+
+    sock[0] = client;
+    sock[1] = server;
+
+    return 0;
+fail:
+    if(INVALID_SOCKET!=listener)
+        closesocket(listener);
+    if (INVALID_SOCKET!=client)
+        closesocket(client);
+    return -1;
+}
+
+static int __dgram_socketpair(struct addrinfo* addr_info,SOCKET sock[2])
+{
+    SOCKET client, server;
+    struct addrinfo addr, *result = NULL;
+    const char* address;
+    int opt = 1;
+
+    server = client = INVALID_SOCKET;
+
+    server = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol);  
+    if (INVALID_SOCKET == server)
+        goto fail;
+
+    setsockopt(server, SOL_SOCKET,SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+
+    if(SOCKET_ERROR == bind(server, addr_info->ai_addr, addr_info->ai_addrlen))
+        goto fail;
+
+    if (SOCKET_ERROR == getsockname(server, addr_info->ai_addr, (int*)&addr_info->ai_addrlen))
+        goto fail;
+
+    client = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol); 
+    if (INVALID_SOCKET == client)
+        goto fail;
+
+    memset(&addr,0,sizeof(addr));
+    addr.ai_family = addr_info->ai_family;
+    addr.ai_socktype = addr_info->ai_socktype;
+    addr.ai_protocol = addr_info->ai_protocol;
+
+    if (AF_INET6==addr.ai_family)
+        address = "0:0:0:0:0:0:0:1";
+    else
+        address = "127.0.0.1";
+
+    if (getaddrinfo(address, "0", &addr, &result))
+        goto fail;
+
+    setsockopt(client,SOL_SOCKET,SO_REUSEADDR,(const char*)&opt, sizeof(opt));
+    if(SOCKET_ERROR == bind(client, result->ai_addr, result->ai_addrlen))
+        goto fail;
+
+    if (SOCKET_ERROR == getsockname(client, result->ai_addr, (int*)&result->ai_addrlen))
+        goto fail;
+
+    if (SOCKET_ERROR == connect(server, result->ai_addr, result->ai_addrlen))
+        goto fail;
+
+    if (SOCKET_ERROR == connect(client, addr_info->ai_addr, addr_info->ai_addrlen))
+        goto fail;
+
+    freeaddrinfo(result);
+    sock[0] = client;
+    sock[1] = server;
+    return 0;
+
+fail:
+    if (INVALID_SOCKET!=client)
+        closesocket(client);
+    if (INVALID_SOCKET!=server)
+        closesocket(server);
+    if (result)
+        freeaddrinfo(result);
+    return -1;
+}
+
+static int _socketpair(int family, int type, int protocol, SOCKET* recv)
+{
+    const char* address;
+    struct addrinfo addr_info,*p_addrinfo;
+    int result = -1;
+
+    memset(&addr_info, 0, sizeof(addr_info));
+    addr_info.ai_family = family;
+    addr_info.ai_socktype = type;
+    addr_info.ai_protocol = protocol;
+    if (AF_INET6==family)
+        address = "0:0:0:0:0:0:0:1";
+    else
+        address = "127.0.0.1";
+
+    if (0 == getaddrinfo(address, "0", &addr_info, &p_addrinfo)){
+        if (SOCK_STREAM == type)
+            result = __stream_socketpair(p_addrinfo, recv);   //use for tcp
+        else if(SOCK_DGRAM == type)
+            result = __dgram_socketpair(p_addrinfo, recv);    //use for udp
+        freeaddrinfo(p_addrinfo);
+    }
+    return result;
+}
+#endif
 
 
-errno_t select_engine_create(select_engine_t **engine)
+blive_errno_t select_engine_create(select_engine_t **engine)
 {
     int          retval = BLIVE_ERR_OK;
     select_engine_t  *new_engine = NULL;
@@ -100,7 +248,18 @@ errno_t select_engine_create(select_engine_t **engine)
     new_engine->need_continue = True;
     pthread_mutex_init(&new_engine->running_flag, NULL);
 
+#ifdef WIN32
+    WORD sockVersion = MAKEWORD(2, 2);
+    WSADATA wsaData;
+
+    if (WSAStartup(sockVersion, &wsaData) != 0) {
+        return ERROR;
+    }
+    _socketpair(AF_INET, SOCK_STREAM, 0, new_engine->manage_pipe);
+     // printf("pair socket is [%d, %d]", new_engine->manage_pipe[0], new_engine->manage_pipe[1]);
+#else
     pipe(new_engine->manage_pipe);
+#endif
     __engine_fd_add(new_engine, new_engine->manage_pipe[0], __manage_fd_callback, new_engine, False);
 
     *engine = new_engine;
@@ -112,7 +271,7 @@ _destroy:
     goto _out;
 }
 
-errno_t select_engine_fd_add_forever(select_engine_t* engine, fd_t fd, select_fd_cb callback, void* context)
+blive_errno_t select_engine_fd_add_forever(select_engine_t* engine, fd_t fd, select_fd_cb callback, void* context)
 {
     int              retval = BLIVE_ERR_OK;
 
@@ -120,7 +279,7 @@ errno_t select_engine_fd_add_forever(select_engine_t* engine, fd_t fd, select_fd
         retval = BLIVE_ERR_INVALID;
         goto _out;
     }
-    printf("select engine add a fd=%d\n", fd);
+     // printf("select engine add a fd=%d\n", fd);
     retval = __engine_fd_add(engine, fd, callback, context, False);
     __engine_reload(engine);    /* 通知engine重新进行select */
 
@@ -128,7 +287,7 @@ _out:
     return retval;
 }
 
-errno_t select_engine_fd_add_once(select_engine_t* engine, fd_t fd, select_fd_cb callback, void* context)
+blive_errno_t select_engine_fd_add_once(select_engine_t* engine, fd_t fd, select_fd_cb callback, void* context)
 {
     int              retval = BLIVE_ERR_OK;
 
@@ -143,7 +302,7 @@ _out:
     return retval;
 }
 
-errno_t select_engine_fd_del(select_engine_t* engine, fd_t fd)
+blive_errno_t select_engine_fd_del(select_engine_t* engine, fd_t fd)
 {
     int              retval = BLIVE_ERR_OK;
 
@@ -159,7 +318,7 @@ _out:
     return retval;
 }
 
-errno_t select_engine_schedule_add(select_engine_t* engine, select_schedule_cb callback, void* context, int64_t timeous)
+blive_errno_t select_engine_schedule_add(select_engine_t* engine, select_schedule_cb callback, void* context, int64_t timeous)
 {
     int      retval = BLIVE_ERR_OK;
     engine_event_t  *event = NULL;
@@ -173,7 +332,7 @@ errno_t select_engine_schedule_add(select_engine_t* engine, select_schedule_cb c
     event->cb = callback;
     event->context = context;
     gettimeofday(&event->time, NULL);
-    printf("current time:  %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);
+     // printf("current time:  %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);
 
     event->time.tv_sec += timeous / (1000 * 1000);
     event->time.tv_usec += timeous % (1000 * 1000);
@@ -186,7 +345,7 @@ errno_t select_engine_schedule_add(select_engine_t* engine, select_schedule_cb c
         event->time.tv_usec = 0;
     }
 
-    printf("set timeout event %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);;
+     // printf("set timeout event %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);;
     pri_queue_push(engine->event_queue, event);
     __engine_reload(engine);    /* 通知engine重新进行select */
 
@@ -194,7 +353,7 @@ _out:
     return retval;
 }
 
-errno_t select_engine_run(select_engine_t* engine)
+blive_errno_t select_engine_run(select_engine_t* engine)
 {
     struct timeval  tm_wait;
     struct timeval* select_tm = NULL;
@@ -222,15 +381,15 @@ errno_t select_engine_run(select_engine_t* engine)
         retval = pri_queue_peek(engine->event_queue, (void**)&event);
         if (retval == BLIVE_ERR_RESOURCE) {   /* 说明此时没有事件需要处理 */
             select_tm = NULL;
-            printf("no need to wait.\n");
+             // printf("no need to wait.\n");
         } else if (retval != BLIVE_ERR_OK) {
             retval = BLIVE_ERR_UNKNOWN;       /* 出错了 */
-            printf("error occured!\n");
+             // printf("error occured!\n");
             goto _out;
         } else {                            /* 说明此时有事件需要处理 */
             gettimeofday(&tm_wait, NULL);
-            printf("current time:  %lds:%ldus\n", tm_wait.tv_sec, tm_wait.tv_usec);
-            printf("event time:  %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);
+             // printf("current time:  %lds:%ldus\n", tm_wait.tv_sec, tm_wait.tv_usec);
+             // printf("event time:  %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);
             tm_wait.tv_sec = event->time.tv_sec - tm_wait.tv_sec;
             tm_wait.tv_usec = event->time.tv_usec - tm_wait.tv_usec;
             if (tm_wait.tv_usec < 0) {
@@ -241,12 +400,16 @@ errno_t select_engine_run(select_engine_t* engine)
                 tm_wait.tv_sec = 0;
                 tm_wait.tv_usec = 0;
             }
-            printf("waiting for timeout...%lds:%ldus\n", tm_wait.tv_sec, tm_wait.tv_usec);
+             // printf("waiting for timeout...%lds:%ldus\n", tm_wait.tv_sec, tm_wait.tv_usec);
             select_tm = &tm_wait;
         }
 
+#ifdef WIN32
+        select_ret = select(0, &engine->read_fds, NULL, NULL, select_tm);
+#else
         select_ret = select(engine->max_fd + 1, &engine->read_fds, NULL, NULL, select_tm);
-        printf("select_ret=%d\n", select_ret);
+#endif
+         // printf("select_ret=%d\n", select_ret);
 
         /* 解锁，此后将会执行回调函数。此时调整select引擎，则不需要进行reload */
         pthread_mutex_unlock(&engine->running_flag);
@@ -263,7 +426,7 @@ errno_t select_engine_run(select_engine_t* engine)
             hash_foreach(engine->fd_poll, __fd_isset_foreach, engine);
         /* 被中断程序打断 */
         } else {
-            printf("select has been interrupted by system call.(%s)\n", strerror(errno));
+             // printf("select has been interrupted by system call.(%s)\n", strerror(errno));
         }
     }
 
@@ -272,7 +435,7 @@ _out:
     return retval;
 }
 
-errno_t select_engine_stop(select_engine_t* engine)
+blive_errno_t select_engine_stop(select_engine_t* engine)
 {
     int              retval = BLIVE_ERR_OK;
     engine_manage_event_t   event = ENGINE_EVENT_STOP;
@@ -288,7 +451,7 @@ _out:
     return retval;
 }
 
-errno_t select_engine_destroy(select_engine_t* engine)
+blive_errno_t select_engine_destroy(select_engine_t* engine)
 {
     int              retval = BLIVE_ERR_OK;
 
@@ -326,9 +489,9 @@ static void __engine_reload(select_engine_t* engine)
     return ;
 }
 
-static errno_t __engine_fd_add(select_engine_t* engine, fd_t fd, select_fd_cb callback, void* context, Bool temporary)
+static blive_errno_t __engine_fd_add(select_engine_t* engine, fd_t fd, select_fd_cb callback, void* context, Bool temporary)
 {
-    errno_t         retval = BLIVE_ERR_OK;
+    blive_errno_t         retval = BLIVE_ERR_OK;
     char            buffer[32] = {0};
     engine_fd_t*    engine_fd = NULL;
 
@@ -343,19 +506,28 @@ static errno_t __engine_fd_add(select_engine_t* engine, fd_t fd, select_fd_cb ca
     engine_fd->temporary = temporary;
     engine_fd->context = context;
 
+#ifdef WIN32 
+    snprintf(buffer, 31, "%I64d", fd);
+#else
     snprintf(buffer, 31, "%d", fd);
+#endif
     hash_push(engine->fd_poll, buffer, engine_fd);
 
 _out:
     return retval;
 }
 
-errno_t __engine_fd_del(select_engine_t* engine, fd_t fd)
+blive_errno_t __engine_fd_del(select_engine_t* engine, fd_t fd)
 {
-    errno_t                 retval = BLIVE_ERR_OK;
+    blive_errno_t                 retval = BLIVE_ERR_OK;
     char                    buffer[32] = {0};
 
-    snprintf(buffer, 32 - 1, "%d", fd);
+#ifdef WIN32 
+    snprintf(buffer, 31, "%I64d", fd);
+#else
+    snprintf(buffer, 31, "%d", fd); 
+#endif
+
     if (hash_pop(engine->fd_poll, buffer) == NULL) {
         retval = BLIVE_ERR_NOTEXSIT;
     }
@@ -400,12 +572,15 @@ static uint32_t __fd_poll_hash_func(const char *key)
 
 static int32_t __fd_readable(fd_t fd)
 {
-    int32_t read_len = 0;
+    unsigned long int read_len = 0;
 
     /* 获取输入缓冲区大小 */
+#ifdef WIN32
+    ioctlsocket(fd, FIONREAD, &read_len);
+#else
     ioctl(fd, FIONREAD, &read_len);
-
-    return read_len;
+#endif
+    return (int32_t)read_len;
 }
 
 static Bool __fd_set_foreach(const char *key, const void* value, void* context)
@@ -419,7 +594,9 @@ static Bool __fd_set_foreach(const char *key, const void* value, void* context)
         goto _out;
     }
 
+#ifndef WIN32
     engine->max_fd = max(engine->max_fd, engine_fd->fd);
+#endif
     FD_SET(engine_fd->fd, &engine->read_fds);
 
 _out:
@@ -433,7 +610,7 @@ static void __manage_fd_callback(fd_t manage_fd, void* context)
 
     while (__fd_readable(manage_fd)) {
         read(manage_fd, &event, sizeof(engine_manage_event_t));
-        printf("process manage message %d\n", event);
+         // printf("process manage message %d\n", event);
         switch (event) {
             case ENGINE_EVENT_STOP:
                 engine->need_continue = False;
@@ -461,7 +638,11 @@ static Bool __fd_isset_foreach(const char *key, const void* value, void* context
         if (engine_fd->temporary) {             /* 如果fd是只执行一次的，则从哈希表中移除 */
             char            buffer[32] = {0};
 
+#ifdef WIN32 
+            snprintf(buffer, 31, "%I64d", engine_fd->fd);
+#else
             snprintf(buffer, 31, "%d", engine_fd->fd);
+#endif
             hash_pop(engine->fd_poll, buffer);
         }
 

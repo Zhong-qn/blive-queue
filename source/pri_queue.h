@@ -25,7 +25,10 @@ typedef struct {
 
 
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 /**
  * 创建一个优先级队列
@@ -91,6 +94,8 @@ int pri_queue_pop_timedwait(pri_queue_t *pri_queue, void* *pdata, int32_t timeou
  */
 int32_t pri_queue_get_size(const pri_queue_t *pri_queue);
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
 #endif
 
