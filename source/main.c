@@ -9,6 +9,7 @@
  */
 
 #include <stdio.h>
+#include <unistd.h>
 #include <pthread.h>
 
 #include "blive_api/blive_api.h"
@@ -17,6 +18,7 @@
 #include "cJSON.h"
 
 #include "config.h"
+#include "blive_queue.h"
 #include "callbacks.h"
 
 
@@ -49,14 +51,14 @@ static void* timer_thread(void* arg)
  * @param arg 
  * @return void* 
  */
-// static void* blive_thread(void* arg)
-// {
-//     blive*              entity = (blive*)arg;
+static void* blive_thread(void* arg)
+{
+    blive*              entity = (blive*)arg;
 
-//     blive_perform(entity, -1);
-//     printf("blive_thread end\n");
-//     return NULL;
-// }
+    blive_perform(entity, -1);
+    printf("blive_thread end\n");
+    return NULL;
+}
 
 /**
  * @brief 解析、生成配置
@@ -93,9 +95,22 @@ static int parse_config(const char* config_path, blive_ext_cfg* config)
     }
     free(config_buffer);
 
+    /*加载监听的直播间*/
+    json_obj = cJSON_GetObjectItem(json_main, "监听的直播间");
+    if (json_obj == NULL) {
+        cJSON_Delete(json_main);
+        return BLIVE_ERR_INVALID;
+    }
+    config->room_num = cJSON_GetArraySize(json_obj);
+    config->rooms = zero_alloc(sizeof(*config->rooms) * config->room_num);
+    for (int count = 0; count < config->room_num; count++) {
+        config->rooms[count].room_id = cJSON_GetArrayItem(json_obj, count)->valueint;
+    }
+
     /*加载插队规则*/
     json_obj = cJSON_GetObjectItem(json_main, "插队规则");
     if (json_obj != NULL) {
+        config->queue_jump_config.liver_name = cJSON_GetObjectItem(json_obj, "主播名称")->valuestring;
         config->queue_jump_config.capt_first = cJSON_GetObjectItem(json_obj, "舰长优先")->type == cJSON_True ? True : False;
         config->queue_jump_config.allow_gift_jump = cJSON_GetObjectItem(json_obj, "允许送礼物插队")->type == cJSON_True ? True : False;
         config->queue_jump_config.allow_gift_promotion = cJSON_GetObjectItem(json_obj, "允许送礼物提升排队次序")->type == cJSON_True ? True : False;
@@ -145,14 +160,12 @@ static int parse_config(const char* config_path, blive_ext_cfg* config)
 int main(void)
 {
     pthread_t           timer_pid;
-    // pthread_t           blive_pid;
     void*               thrd_ret = NULL;
     select_engine_t*    engine = NULL;
-    blive*              entity = NULL;
-    blive_ext_cfg       config = {0};
+    blive_queue         queue_entity;
 
     /*加载配置文件*/
-    if (parse_config(BLIVE_QUEUE_CFG_PATH, &config) != BLIVE_ERR_OK) {
+    if (parse_config(BLIVE_QUEUE_CFG_PATH, &queue_entity.conf) != BLIVE_ERR_OK) {
         printf("解析配置文件失败！\n");
         return ERROR;
     }
@@ -161,26 +174,37 @@ int main(void)
     select_engine_create(&engine);
     pthread_create(&timer_pid, NULL, timer_thread, engine);
 
-    /*启动bilibili直播间解析模块*/
+    /*初始化bilibili直播间解析模块*/
     blive_api_init();
-    blive_create(&entity, 0, 25348832);
-    blive_establish_connection(entity, schedule_set_func, engine);
-    // pthread_create(&blive_pid, NULL, blive_thread, entity);
+    for (int count = 0; count < queue_entity.conf.room_num; count++) {
+        /*初始化blive*/
+        blive_create(&queue_entity.conf.rooms[count].room_entity, 0, queue_entity.conf.rooms[count].room_id);
+        blive_establish_connection(queue_entity.conf.rooms[count].room_entity, schedule_set_func, engine);
 
-    blive_set_command_callback(entity, BLIVE_INFO_DANMU_MSG, danmu_callbacks, &config);
-    blive_perform(entity, 200);
+        /*设置接收消息的回调函数*/
+        blive_set_command_callback(queue_entity.conf.rooms[count].room_entity, BLIVE_INFO_DANMU_MSG, danmu_callbacks, &queue_entity);
+
+        /*启动监听*/
+        pthread_create(&queue_entity.conf.rooms[count].thread_id, NULL, blive_thread, queue_entity.conf.rooms[count].room_entity);
+    }
+
+    sleep(3600);
 
     /*结束bilibili直播间解析模块*/
-    blive_force_stop(entity);
-    // pthread_join(blive_pid, &thrd_ret);
-    blive_close_connection(entity);
-    blive_destroy(entity);
+    for (int count = 0; count < queue_entity.conf.room_num; count++) {
+        blive_force_stop(queue_entity.conf.rooms[count].room_entity);
+    }
+    for (int count = 0; count < queue_entity.conf.room_num; count++) {
+        pthread_join(queue_entity.conf.rooms[count].thread_id, &thrd_ret);
+        blive_close_connection(queue_entity.conf.rooms[count].room_entity);
+        blive_destroy(queue_entity.conf.rooms[count].room_entity);
+    }
     blive_api_deinit();
 
     /*结束定时器功能模块*/
     select_engine_stop(engine);
-    select_engine_destroy(engine);
     pthread_join(timer_pid, &thrd_ret);
+    select_engine_destroy(engine);
 
     return 0;
 }

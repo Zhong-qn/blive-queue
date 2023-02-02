@@ -70,148 +70,6 @@ static void __manage_fd_callback(fd_t manage_fd, void* context);
 static void __engine_reload(select_engine_t* engine);
 static int __engine_fd_add(select_engine_t* engine, fd_t fd, select_fd_cb callback, void* context, Bool temporary);
 int __engine_fd_del(select_engine_t* engine, fd_t fd);
-#ifdef WIN32
-#include <ws2tcpip.h>
-
-static int __stream_socketpair(struct addrinfo* addr_info, SOCKET sock[2])
-{
-    SOCKET listener, client, server;
-    int opt = 1;
-
-    listener = server = client = INVALID_SOCKET;
-    listener = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol); //创建服务器socket并进行绑定监听等
-    if (INVALID_SOCKET == listener)
-        goto fail;
-
-    setsockopt(listener, SOL_SOCKET, SO_REUSEADDR,(const char*)&opt, sizeof(opt));
-
-    if(SOCKET_ERROR == bind(listener, addr_info->ai_addr, addr_info->ai_addrlen))
-        goto fail;
-
-    if (SOCKET_ERROR == getsockname(listener, addr_info->ai_addr, (int*)&addr_info->ai_addrlen))
-        goto fail;
-
-    if(SOCKET_ERROR == listen(listener, 5))
-        goto fail;
-
-    client = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol); //创建客户端socket，并连接服务器
-
-    if (INVALID_SOCKET == client)
-        goto fail;
-
-    if (SOCKET_ERROR == connect(client,addr_info->ai_addr,addr_info->ai_addrlen))
-        goto fail;
-
-    server = accept(listener, 0, 0);
-
-    if (INVALID_SOCKET == server)
-        goto fail;
-
-    closesocket(listener);
-
-    sock[0] = client;
-    sock[1] = server;
-
-    return 0;
-fail:
-    if(INVALID_SOCKET!=listener)
-        closesocket(listener);
-    if (INVALID_SOCKET!=client)
-        closesocket(client);
-    return -1;
-}
-
-static int __dgram_socketpair(struct addrinfo* addr_info,SOCKET sock[2])
-{
-    SOCKET client, server;
-    struct addrinfo addr, *result = NULL;
-    const char* address;
-    int opt = 1;
-
-    server = client = INVALID_SOCKET;
-
-    server = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol);  
-    if (INVALID_SOCKET == server)
-        goto fail;
-
-    setsockopt(server, SOL_SOCKET,SO_REUSEADDR, (const char*)&opt, sizeof(opt));
-
-    if(SOCKET_ERROR == bind(server, addr_info->ai_addr, addr_info->ai_addrlen))
-        goto fail;
-
-    if (SOCKET_ERROR == getsockname(server, addr_info->ai_addr, (int*)&addr_info->ai_addrlen))
-        goto fail;
-
-    client = socket(addr_info->ai_family, addr_info->ai_socktype, addr_info->ai_protocol); 
-    if (INVALID_SOCKET == client)
-        goto fail;
-
-    memset(&addr,0,sizeof(addr));
-    addr.ai_family = addr_info->ai_family;
-    addr.ai_socktype = addr_info->ai_socktype;
-    addr.ai_protocol = addr_info->ai_protocol;
-
-    if (AF_INET6==addr.ai_family)
-        address = "0:0:0:0:0:0:0:1";
-    else
-        address = "127.0.0.1";
-
-    if (getaddrinfo(address, "0", &addr, &result))
-        goto fail;
-
-    setsockopt(client,SOL_SOCKET,SO_REUSEADDR,(const char*)&opt, sizeof(opt));
-    if(SOCKET_ERROR == bind(client, result->ai_addr, result->ai_addrlen))
-        goto fail;
-
-    if (SOCKET_ERROR == getsockname(client, result->ai_addr, (int*)&result->ai_addrlen))
-        goto fail;
-
-    if (SOCKET_ERROR == connect(server, result->ai_addr, result->ai_addrlen))
-        goto fail;
-
-    if (SOCKET_ERROR == connect(client, addr_info->ai_addr, addr_info->ai_addrlen))
-        goto fail;
-
-    freeaddrinfo(result);
-    sock[0] = client;
-    sock[1] = server;
-    return 0;
-
-fail:
-    if (INVALID_SOCKET!=client)
-        closesocket(client);
-    if (INVALID_SOCKET!=server)
-        closesocket(server);
-    if (result)
-        freeaddrinfo(result);
-    return -1;
-}
-
-static int _socketpair(int family, int type, int protocol, SOCKET* recv)
-{
-    const char* address;
-    struct addrinfo addr_info,*p_addrinfo;
-    int result = -1;
-
-    memset(&addr_info, 0, sizeof(addr_info));
-    addr_info.ai_family = family;
-    addr_info.ai_socktype = type;
-    addr_info.ai_protocol = protocol;
-    if (AF_INET6==family)
-        address = "0:0:0:0:0:0:0:1";
-    else
-        address = "127.0.0.1";
-
-    if (0 == getaddrinfo(address, "0", &addr_info, &p_addrinfo)){
-        if (SOCK_STREAM == type)
-            result = __stream_socketpair(p_addrinfo, recv);   //use for tcp
-        else if(SOCK_DGRAM == type)
-            result = __dgram_socketpair(p_addrinfo, recv);    //use for udp
-        freeaddrinfo(p_addrinfo);
-    }
-    return result;
-}
-#endif
 
 
 blive_errno_t select_engine_create(select_engine_t **engine)
@@ -248,19 +106,9 @@ blive_errno_t select_engine_create(select_engine_t **engine)
     new_engine->need_continue = True;
     pthread_mutex_init(&new_engine->running_flag, NULL);
 
-#ifdef WIN32
-    WORD sockVersion = MAKEWORD(2, 2);
-    WSADATA wsaData;
-
-    if (WSAStartup(sockVersion, &wsaData) != 0) {
-        return ERROR;
-    }
-    _socketpair(AF_INET, SOCK_STREAM, 0, new_engine->manage_pipe);
-     // printf("pair socket is [%d, %d]", new_engine->manage_pipe[0], new_engine->manage_pipe[1]);
-#else
-    pipe(new_engine->manage_pipe);
-#endif
-    __engine_fd_add(new_engine, new_engine->manage_pipe[0], __manage_fd_callback, new_engine, False);
+    _socketpair(new_engine->manage_pipe);
+    // printf("[%d, %d]\n", RD_FD(new_engine->manage_pipe), WR_FD(new_engine->manage_pipe));
+    __engine_fd_add(new_engine, RD_FD(new_engine->manage_pipe), __manage_fd_callback, new_engine, False);
 
     *engine = new_engine;
 _out:
@@ -445,7 +293,7 @@ blive_errno_t select_engine_stop(select_engine_t* engine)
         goto _out;
     }
 
-    write(engine->manage_pipe[1], &event, sizeof(engine_manage_event_t));
+    fd_write(WR_FD(engine->manage_pipe), &event, sizeof(engine_manage_event_t));
 
 _out:
     return retval;
@@ -483,7 +331,7 @@ static void __engine_reload(select_engine_t* engine)
         pthread_mutex_unlock(&engine->running_flag);
     } else {
         /* 如果拿不到锁，这说明此时程序正在运行，通知engine重新进行select */
-        write(engine->manage_pipe[1], &mgt_event, sizeof(engine_manage_event_t));
+        fd_write(WR_FD(engine->manage_pipe), &mgt_event, sizeof(engine_manage_event_t));
     }
 
     return ;
@@ -609,7 +457,7 @@ static void __manage_fd_callback(fd_t manage_fd, void* context)
     select_engine_t*         engine = (select_engine_t*)context;
 
     while (__fd_readable(manage_fd)) {
-        read(manage_fd, &event, sizeof(engine_manage_event_t));
+        fd_read(manage_fd, &event, sizeof(engine_manage_event_t));
          // printf("process manage message %d\n", event);
         switch (event) {
             case ENGINE_EVENT_STOP:

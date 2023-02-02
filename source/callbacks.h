@@ -23,9 +23,9 @@ extern "C" {
  * 
  * @param [in] entity blive-api模块实体
  * @param [in] msg json格式的数据
- * @param [in] config 运行的配置结构体
+ * @param [in] queue_entity 运行的排队姬实体
  */
-void danmu_callbacks(blive* entity, const cJSON* msg, void* config);
+void danmu_callbacks(blive* entity, const cJSON* msg, void* queue_entity);
 
 #ifdef __cplusplus
 }

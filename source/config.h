@@ -12,9 +12,18 @@
 #define __BLIVE_EXT_CONFIG_H__
 
 #include "utils.h"
+#include <pthread.h>
 
 typedef struct {
+    uint32_t        room_num;                   /*存放监听的直播间个数*/
     struct {
+        uint32_t    room_id;                    /*监听的直播间ID*/
+        blive*      room_entity;                /*监听的直播间实体*/
+        pthread_t   thread_id;                  /*监听线程的pid*/
+    } *rooms;               /*存放监听的直播间数组*/
+             
+    struct {
+        char*       liver_name;                 /*主播名称*/
         Bool        capt_first;                 /*排队舰长优先*/
         Bool        allow_gift_jump;            /*允许礼物插队*/
         Bool        allow_gift_promotion;       /*允许礼物提升排队次序*/

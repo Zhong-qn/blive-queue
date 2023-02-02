@@ -16,16 +16,44 @@
 #include "cJSON.h"
 
 #include "config.h"
+#include "blive_queue.h"
 
-void danmu_callbacks(blive* entity, const cJSON* msg, blive_ext_cfg* config)
+typedef struct {
+    char*       danmu_body;                 /*弹幕内容*/
+    uint32_t    danmu_sender_uid;           /*弹幕发送者uid*/
+    char*       danmu_sender_name;          /*弹幕发送者昵称*/
+    uint32_t    fans_price_level;           /*弹幕发送者粉丝牌等级*/
+    char*       fans_price_name;            /*弹幕发送者粉丝牌名称*/
+    char*       fans_price_liver_name;      /*弹幕发送者粉丝牌对应的主播名称*/
+} user_info;
+
+static Bool search_user_in_list(const user_info* info, cJSON* list)
+{
+    int         arr_num = 0;
+    cJSON*      json_obj = NULL;
+    cJSON*      json_uid_in_list = NULL;
+    cJSON*      json_name_in_list = NULL;
+
+    while ((json_obj = cJSON_GetArrayItem(list, arr_num++)) != NULL) {
+        json_uid_in_list = cJSON_GetObjectItem(json_obj, "uid");
+        if ((json_uid_in_list != NULL) && (json_uid_in_list->valueint == info->danmu_sender_uid)) {
+            json_name_in_list = cJSON_GetObjectItem(json_obj, "昵称");
+            /*如果获取到的uid一致但是昵称不一致，更新配置文件中的昵称*/
+            if (strcmp(json_name_in_list->valuestring, info->danmu_sender_name)) {
+                cJSON_SetValuestring(json_name_in_list, info->danmu_sender_name);
+            }
+            return True;
+        }
+    }
+
+    return False;
+}
+
+
+void danmu_callbacks(blive* entity, const cJSON* msg, blive_queue* queue_entity)
 {
     cJSON*      json_obj = NULL;
-    char*       danmu_body = NULL;              /*弹幕内容*/
-    uint32_t    danmu_sender_uid = 0;           /*弹幕发送者uid*/
-    char*       danmu_sender_name = 0;          /*弹幕发送者昵称*/
-    uint32_t    fans_price_level = 0;           /*弹幕发送者粉丝牌等级*/
-    char*       fans_price_name = NULL;         /*弹幕发送者粉丝牌名称*/
-    char*       fans_price_liver_name = NULL;   /*弹幕发送者粉丝牌对应的主播名称*/
+    user_info   info = {0};
 
     /**
      * @brief 弹幕消息示例：
@@ -77,26 +105,45 @@ void danmu_callbacks(blive* entity, const cJSON* msg, blive_ext_cfg* config)
 
     /*获取info的数组中，第2个元素，即为弹幕内容*/
     json_obj = cJSON_GetObjectItem(msg, "info");
-    danmu_body = cJSON_GetArrayItem(json_obj, 1)->valuestring;
+    info.danmu_body = cJSON_GetArrayItem(json_obj, 1)->valuestring;
 
     /*获取info的数组中，第3个元素，即为弹幕发送者信息*/
     json_obj = cJSON_GetObjectItem(msg, "info");
     json_obj = cJSON_GetArrayItem(json_obj, 2);
-    danmu_sender_uid = cJSON_GetArrayItem(json_obj, 0)->valueint;
-    danmu_sender_name = cJSON_GetArrayItem(json_obj, 1)->valuestring;
+    info.danmu_sender_uid = cJSON_GetArrayItem(json_obj, 0)->valueint;
+    info.danmu_sender_name = cJSON_GetArrayItem(json_obj, 1)->valuestring;
 
     /*获取info的数组中，第4个元素，即为粉丝牌信息*/
     json_obj = cJSON_GetObjectItem(msg, "info");
     json_obj = cJSON_GetArrayItem(json_obj, 3);
     if (cJSON_GetArrayItem(json_obj, 0) != NULL) {
-        fans_price_level = cJSON_GetArrayItem(json_obj, 0)->valueint;
-        fans_price_name = cJSON_GetArrayItem(json_obj, 1)->valuestring;
-        fans_price_liver_name = cJSON_GetArrayItem(json_obj, 2)->valuestring;
-        printf("%s [%s Lv.%d] %s(%d): %s\n", fans_price_liver_name, fans_price_name, fans_price_level, 
-                danmu_sender_name, danmu_sender_uid, danmu_body);
+        info.fans_price_level = cJSON_GetArrayItem(json_obj, 0)->valueint;
+        info.fans_price_name = cJSON_GetArrayItem(json_obj, 1)->valuestring;
+        info.fans_price_liver_name = cJSON_GetArrayItem(json_obj, 2)->valuestring;
+        printf("%s [%s Lv.%d] %s(%d): %s\n", info.fans_price_liver_name, info.fans_price_name, info.fans_price_level, 
+                info.danmu_sender_name, info.danmu_sender_uid, info.danmu_body);
     } else {
-        printf("%s(%d): %s\n", danmu_sender_name, danmu_sender_uid, danmu_body);
+        printf("%s(%d): %s\n", info.danmu_sender_name, info.danmu_sender_uid, info.danmu_body);
     }
+
+    /*发送的不是排队，直接返回*/
+    if (strcmp(info.danmu_body, "排队")) {
+        return ;
+    }
+
+    /*如果用户在白名单内，直接进入排队列表*/
+    if (search_user_in_list(&info, queue_entity->conf.filter_config.whitelist)) {
+        printf("user %s(%d) in whitelist\n", info.danmu_sender_name, info.danmu_sender_uid);
+        goto ADD_LIST;
+    }
+    /*如果用户在黑名单内，直接返回*/
+    if (search_user_in_list(&info, queue_entity->conf.filter_config.blacklist)) {
+        printf("user %s(%d) in blacklist, return\n", info.danmu_sender_name, info.danmu_sender_uid);
+        return ;
+    }
+
+ADD_LIST:
+    // pri_queue_push(queue_entity->queue, &info);
 
     return ;
 }
