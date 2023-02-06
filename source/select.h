@@ -1,10 +1,17 @@
 /**
  * @file select.h
+ * 
  * @author Zhong Qiaoning (691365572@qq.com)
  * @brief 一个基于select实现的事件引擎，通过select来实现
  *        对文件描述符fd、定时器事件event的处理。
  * @version 0.1
  * @date 2022-07-13
+ * 
+ * @author Zhong Qiaoning (691365572@qq.com)
+ * @brief 完成对Windows平台的兼容性改造
+ * @note 仅支持Windows posix标准
+ * @version 1.0
+ * @date 2023-02-04 
  * 
  * @copyright Copyright (c) 2022
  * 

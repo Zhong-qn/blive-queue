@@ -25,7 +25,7 @@ extern "C" {
  * @param [in] msg json格式的数据
  * @param [in] queue_entity 运行的排队姬实体
  */
-void danmu_callbacks(blive* entity, const cJSON* msg, void* queue_entity);
+void danmu_callback(blive* entity, const cJSON* msg, void* queue_entity);
 
 #ifdef __cplusplus
 }

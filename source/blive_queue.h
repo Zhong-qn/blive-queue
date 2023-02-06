@@ -13,6 +13,7 @@
 
 #include "config.h"
 #include "pri_queue.h"
+#include "blive_api/blive_api.h"
 
 typedef struct {
     blive_ext_cfg   conf;

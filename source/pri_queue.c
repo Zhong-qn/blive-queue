@@ -1,8 +1,13 @@
 /**
  * @file pri_queue.c
  * @author Zhong Qiaoning (691365572@qq.com)
- * @brief 
- * @version 0.1
+ * @brief 优先级队列。
+ * @attention 需要注意到的是，该优先级队列为了保证在插入、删除时的快速进
+ * 行，以及消耗的资源最少化，选用的是树型结构的上浮、下沉，因此这只能保证
+ * 每次移除的根节点一定是优先级最高的，并不能保证整个数组中按顺序下去是符
+ * 合优先级的从大到小的顺序，因此该优先级队列并不提供foreach遍历的接口。
+ * @note 仅支持posix标准
+ * @version 1.0
  * @date 2022-07-12
  * 
  * @copyright Copyright (c) 2022
@@ -14,6 +19,7 @@
 
 #include "utils.h"
 #include "pri_queue.h"
+#include "blive_queue.h"
 
 
 typedef struct heap_element {
@@ -129,7 +135,7 @@ int pri_queue_peek(pri_queue_t * pri_queue, void** pdata)
         retval = BLIVE_ERR_RESOURCE;
     }
     pthread_mutex_unlock(&pri_queue->mutex);
-    // printf("peek data address %p\n", *pdata);
+    blive_logd("peek data address %p\n", *pdata);
 
 _out:
     return retval;
@@ -161,7 +167,7 @@ int pri_queue_push(pri_queue_t * pri_queue, void* data)
 
     pthread_cond_broadcast(&pri_queue->cond);
     pthread_mutex_unlock(&pri_queue->mutex);
-    // printf("push data address %p\n", data);
+    blive_logd("push data address %p\n", data);
 
 _out:
     return retval;
@@ -383,7 +389,7 @@ static void __heap_sort(inn_heap_t *heap, int32_t index)
         if (heap->elem_compare_cb(heap->heap_mem[parent_index]->data, heap->heap_mem[index]->data)) {
             break;    /* index元素小于父节点元素，排序停止 */
         }
-        
+
         /* 由于已经保存了最初节点信息，仅需将父节点信息移动下来即可 */
         heap->heap_mem[index] = heap->heap_mem[parent_index];
         index = parent_index;

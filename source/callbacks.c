@@ -50,7 +50,7 @@ static Bool search_user_in_list(const user_info* info, cJSON* list)
 }
 
 
-void danmu_callbacks(blive* entity, const cJSON* msg, blive_queue* queue_entity)
+void danmu_callback(blive* entity, const cJSON* msg, blive_queue* queue_entity)
 {
     cJSON*      json_obj = NULL;
     user_info   info = {0};
@@ -58,10 +58,10 @@ void danmu_callbacks(blive* entity, const cJSON* msg, blive_queue* queue_entity)
     /**
      * @brief 弹幕消息示例：
      * 
-     *    ---       {
-     *     ↑            "cmd": "DANMU_MSG",
-     *     |            "info": [
-     *     |                [
+     *              {
+     * 消息类型：弹幕    "cmd": "DANMU_MSG",
+     *    ---           "info": [
+     *     ↑                [
      *     |                    0, 1, 25, 16777215, 1673789362967 ,1673770572, 0, "81240bc1", 0, 0, 0, "", 0, "{}", "{}",
      *     |                    {    
      *     |                        "mode": 0,
@@ -86,20 +86,20 @@ void danmu_callbacks(blive* entity, const cJSON* msg, blive_queue* queue_entity)
      *     粉丝牌对应的主播      "薄海纸鱼", 
      *                          706667, 6126494, "", 0, 12632256, 12632256, 12632256, 0, 0, 1837617
      *                      ],
-     *    ---                   [0, 0, 9868950, ">50000", 2],
-     *     ↑                    ["", "" ],
-     *     |                    0,
-     *     |                    0,
-     *     |                    null,
-     *     |                    {"ts": 1673789362, "ct": "A4721FE3"},
-     *   无用消息                0,
-     *     |                    0,
-     *     |                    null,
-     *     |                    null,
-     *     |                    0,
-     *     |                    21
-     *     ↓                ]
-     *    ---           }
+     *    ---               [0, 0, 9868950, ">50000", 2],
+     *     ↑                ["", "" ],
+     *     |                0,
+     *     |                0,
+     *     |                null,
+     *     |                {"ts": 1673789362, "ct": "A4721FE3"},
+     *   无用消息            0,
+     *     |                0,
+     *     |                null,
+     *     |                null,
+     *     |                0,
+     *     |                21
+     *     ↓            ]
+     *    ---       }
      * 
      */
 
@@ -120,10 +120,10 @@ void danmu_callbacks(blive* entity, const cJSON* msg, blive_queue* queue_entity)
         info.fans_price_level = cJSON_GetArrayItem(json_obj, 0)->valueint;
         info.fans_price_name = cJSON_GetArrayItem(json_obj, 1)->valuestring;
         info.fans_price_liver_name = cJSON_GetArrayItem(json_obj, 2)->valuestring;
-        printf("%s [%s Lv.%d] %s(%d): %s\n", info.fans_price_liver_name, info.fans_price_name, info.fans_price_level, 
+        blive_logi("%s [%s Lv.%d] %s(%d): %s\n", info.fans_price_liver_name, info.fans_price_name, info.fans_price_level, 
                 info.danmu_sender_name, info.danmu_sender_uid, info.danmu_body);
     } else {
-        printf("%s(%d): %s\n", info.danmu_sender_name, info.danmu_sender_uid, info.danmu_body);
+        blive_logi("%s(%d): %s\n", info.danmu_sender_name, info.danmu_sender_uid, info.danmu_body);
     }
 
     /*发送的不是排队，直接返回*/
@@ -133,12 +133,12 @@ void danmu_callbacks(blive* entity, const cJSON* msg, blive_queue* queue_entity)
 
     /*如果用户在白名单内，直接进入排队列表*/
     if (search_user_in_list(&info, queue_entity->conf.filter_config.whitelist)) {
-        printf("user %s(%d) in whitelist\n", info.danmu_sender_name, info.danmu_sender_uid);
+        blive_logi("user %s(%d) in whitelist\n", info.danmu_sender_name, info.danmu_sender_uid);
         goto ADD_LIST;
     }
     /*如果用户在黑名单内，直接返回*/
     if (search_user_in_list(&info, queue_entity->conf.filter_config.blacklist)) {
-        printf("user %s(%d) in blacklist, return\n", info.danmu_sender_name, info.danmu_sender_uid);
+        blive_logi("user %s(%d) in blacklist, return\n", info.danmu_sender_name, info.danmu_sender_uid);
         return ;
     }
 

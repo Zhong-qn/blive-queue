@@ -81,6 +81,7 @@ add_compile_options(-g -Wall -fPIC)
 add_subdirectory(supports/blive-api-c ${BLIVE_QUEUE_DIR}/CMakeCaches/blive_api)
 
 add_executable(blive_queue ${BLIVE_QUEUE_SRC})
+add_definitions(-DBLIVE_API_DEBUG_INFO)
 
 target_link_libraries(blive_queue pthread  blive_api_s)
 if(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")

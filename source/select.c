@@ -24,6 +24,7 @@
 #include "hash.h"
 #include "pri_queue.h"
 #include "select.h"
+#include "blive_queue.h"
 
 
 #define PRI_QUEUE_SIZE      50
@@ -41,23 +42,23 @@ typedef struct {
 } engine_event_t;
 
 typedef struct {
-    fd_t             fd;
-    select_fd_cb     cb;
-    Bool           temporary;
+    fd_t                fd;
+    select_fd_cb        cb;
+    Bool                temporary;
     void*               context;
 } engine_fd_t;
 
 struct select_engine_t {
-    pri_queue_t      *event_queue;
-    hash_t           *fd_poll;
+    pri_queue_t*        event_queue;
+    hash_t*             fd_poll;
     fd_set              read_fds;
 #ifndef WIN32
-    fd_t             max_fd;
+    fd_t                max_fd;
 #endif
-    Bool           need_continue;
-    Bool           has_reset;
+    Bool                need_continue;
+    Bool                has_reset;
     pthread_mutex_t     running_flag;   /* 是否在运行的标志位 */
-    fd_t             manage_pipe[2];
+    fd_t                manage_pipe[2];
 };
 
 
@@ -107,7 +108,7 @@ blive_errno_t select_engine_create(select_engine_t **engine)
     pthread_mutex_init(&new_engine->running_flag, NULL);
 
     _socketpair(new_engine->manage_pipe);
-    // printf("[%d, %d]\n", RD_FD(new_engine->manage_pipe), WR_FD(new_engine->manage_pipe));
+    blive_logd("[%d, %d]", RD_FD(new_engine->manage_pipe), WR_FD(new_engine->manage_pipe));
     __engine_fd_add(new_engine, RD_FD(new_engine->manage_pipe), __manage_fd_callback, new_engine, False);
 
     *engine = new_engine;
@@ -127,7 +128,7 @@ blive_errno_t select_engine_fd_add_forever(select_engine_t* engine, fd_t fd, sel
         retval = BLIVE_ERR_INVALID;
         goto _out;
     }
-     // printf("select engine add a fd=%d\n", fd);
+    blive_logd("select engine add a fd=%d", fd);
     retval = __engine_fd_add(engine, fd, callback, context, False);
     __engine_reload(engine);    /* 通知engine重新进行select */
 
@@ -180,7 +181,7 @@ blive_errno_t select_engine_schedule_add(select_engine_t* engine, select_schedul
     event->cb = callback;
     event->context = context;
     gettimeofday(&event->time, NULL);
-     // printf("current time:  %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);
+    blive_logd("current time:  %lds:%ldus", event->time.tv_sec, event->time.tv_usec);
 
     event->time.tv_sec += timeous / (1000 * 1000);
     event->time.tv_usec += timeous % (1000 * 1000);
@@ -193,7 +194,7 @@ blive_errno_t select_engine_schedule_add(select_engine_t* engine, select_schedul
         event->time.tv_usec = 0;
     }
 
-     // printf("set timeout event %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);;
+    blive_logd("set timeout event %lds:%ldus", event->time.tv_sec, event->time.tv_usec);;
     pri_queue_push(engine->event_queue, event);
     __engine_reload(engine);    /* 通知engine重新进行select */
 
@@ -201,12 +202,12 @@ _out:
     return retval;
 }
 
-blive_errno_t select_engine_run(select_engine_t* engine)
+blive_errno_t select_engine_perform(select_engine_t* engine)
 {
     struct timeval  tm_wait;
     struct timeval* select_tm = NULL;
-    engine_event_t  *event = NULL;
-    int      retval = BLIVE_ERR_OK;
+    engine_event_t* event = NULL;
+    int             retval = BLIVE_ERR_OK;
     int32_t         select_ret = 0;
 
     if (engine == NULL) {
@@ -229,15 +230,15 @@ blive_errno_t select_engine_run(select_engine_t* engine)
         retval = pri_queue_peek(engine->event_queue, (void**)&event);
         if (retval == BLIVE_ERR_RESOURCE) {   /* 说明此时没有事件需要处理 */
             select_tm = NULL;
-             // printf("no need to wait.\n");
+            blive_logd("no need to wait.");
         } else if (retval != BLIVE_ERR_OK) {
             retval = BLIVE_ERR_UNKNOWN;       /* 出错了 */
-             // printf("error occured!\n");
+            blive_logd("error occured!");
             goto _out;
         } else {                            /* 说明此时有事件需要处理 */
             gettimeofday(&tm_wait, NULL);
-             // printf("current time:  %lds:%ldus\n", tm_wait.tv_sec, tm_wait.tv_usec);
-             // printf("event time:  %lds:%ldus\n", event->time.tv_sec, event->time.tv_usec);
+            blive_logd("current time:  %lds:%ldus", tm_wait.tv_sec, tm_wait.tv_usec);
+            blive_logd("event time:  %lds:%ldus", event->time.tv_sec, event->time.tv_usec);
             tm_wait.tv_sec = event->time.tv_sec - tm_wait.tv_sec;
             tm_wait.tv_usec = event->time.tv_usec - tm_wait.tv_usec;
             if (tm_wait.tv_usec < 0) {
@@ -248,7 +249,7 @@ blive_errno_t select_engine_run(select_engine_t* engine)
                 tm_wait.tv_sec = 0;
                 tm_wait.tv_usec = 0;
             }
-             // printf("waiting for timeout...%lds:%ldus\n", tm_wait.tv_sec, tm_wait.tv_usec);
+            blive_logd("waiting for timeout...%lds:%ldus", tm_wait.tv_sec, tm_wait.tv_usec);
             select_tm = &tm_wait;
         }
 
@@ -257,7 +258,7 @@ blive_errno_t select_engine_run(select_engine_t* engine)
 #else
         select_ret = select(engine->max_fd + 1, &engine->read_fds, NULL, NULL, select_tm);
 #endif
-         // printf("select_ret=%d\n", select_ret);
+        blive_logd("select_ret=%d", select_ret);
 
         /* 解锁，此后将会执行回调函数。此时调整select引擎，则不需要进行reload */
         pthread_mutex_unlock(&engine->running_flag);
@@ -274,7 +275,7 @@ blive_errno_t select_engine_run(select_engine_t* engine)
             hash_foreach(engine->fd_poll, __fd_isset_foreach, engine);
         /* 被中断程序打断 */
         } else {
-             // printf("select has been interrupted by system call.(%s)\n", strerror(errno));
+            blive_logd("select has been interrupted by system call.(%s)", strerror(errno));
         }
     }
 
@@ -458,7 +459,7 @@ static void __manage_fd_callback(fd_t manage_fd, void* context)
 
     while (__fd_readable(manage_fd)) {
         fd_read(manage_fd, &event, sizeof(engine_manage_event_t));
-         // printf("process manage message %d\n", event);
+        blive_logd("process manage message %d", event);
         switch (event) {
             case ENGINE_EVENT_STOP:
                 engine->need_continue = False;

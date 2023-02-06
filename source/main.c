@@ -40,8 +40,8 @@ static void* timer_thread(void* arg)
 {
     select_engine_t*    engine = (select_engine_t*)arg;
 
-    select_engine_run(engine);
-    printf("timer_thread end\n");
+    select_engine_perform(engine);
+    blive_loge("timer_thread end\n");
     return NULL;
 }
 
@@ -56,7 +56,7 @@ static void* blive_thread(void* arg)
     blive*              entity = (blive*)arg;
 
     blive_perform(entity, -1);
-    printf("blive_thread end\n");
+    blive_loge("blive_thread end\n");
     return NULL;
 }
 
@@ -166,7 +166,7 @@ int main(void)
 
     /*加载配置文件*/
     if (parse_config(BLIVE_QUEUE_CFG_PATH, &queue_entity.conf) != BLIVE_ERR_OK) {
-        printf("解析配置文件失败！\n");
+        blive_loge("解析配置文件失败！\n");
         return ERROR;
     }
 
@@ -182,7 +182,7 @@ int main(void)
         blive_establish_connection(queue_entity.conf.rooms[count].room_entity, schedule_set_func, engine);
 
         /*设置接收消息的回调函数*/
-        blive_set_command_callback(queue_entity.conf.rooms[count].room_entity, BLIVE_INFO_DANMU_MSG, danmu_callbacks, &queue_entity);
+        blive_set_command_callback(queue_entity.conf.rooms[count].room_entity, BLIVE_INFO_DANMU_MSG, danmu_callback, &queue_entity);
 
         /*启动监听*/
         pthread_create(&queue_entity.conf.rooms[count].thread_id, NULL, blive_thread, queue_entity.conf.rooms[count].room_entity);
