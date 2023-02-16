@@ -20,6 +20,14 @@
 #include "blive_api/blive_def.h"
 
 
+typedef enum {
+    FLEET_LV_NONE = 0,          /*无*/
+    FLEET_LV_GOVERNOR = 1,      /*总督*/
+    FLEET_LV_SUPERVISOR = 2,    /*提督*/
+    FLEET_LV_CAPTAIN = 3,       /*舰长*/
+    FLEET_LV_MAX,
+} blive_fleet_level;
+
 typedef struct {
     uint32_t            weight;                                 /*权重*/
     char                danmu_sender_name[DEFAULT_NAME_LEN];    /*昵称*/
