@@ -71,6 +71,7 @@ set(BLIVE_QUEUE_SRC     ${BLIVE_QUEUE_DIR}/source/main.c
                         ${BLIVE_QUEUE_DIR}/source/hash.c
                         ${BLIVE_QUEUE_DIR}/source/pri_queue.c
                         ${BLIVE_QUEUE_DIR}/source/callbacks.c
+                        ${BLIVE_QUEUE_DIR}/source/queue_list.c
                         ${BLIVE_QUEUE_DIR}/source/select.c)
 
 

@@ -14,27 +14,26 @@
 #include "utils.h"
 #include <pthread.h>
 
+
+#define DEFAULT_NAME_LEN    32
+
+
 typedef struct {
-    uint32_t        room_num;                   /*存放监听的直播间个数*/
+    uint32_t    room_id;                    /*监听的直播间ID*/
+    blive*      room_entity;                /*监听的直播间实体*/
+    pthread_t   thread_id;                  /*监听线程的pid*/
+
     struct {
-        uint32_t    room_id;                    /*监听的直播间ID*/
-        blive*      room_entity;                /*监听的直播间实体*/
-        pthread_t   thread_id;                  /*监听线程的pid*/
-    } *rooms;               /*存放监听的直播间数组*/
-             
-    struct {
-        char*       liver_name;                 /*主播名称*/
-        Bool        capt_first;                 /*排队舰长优先*/
-        Bool        allow_gift_jump;            /*允许礼物插队*/
-        Bool        allow_gift_promotion;       /*允许礼物提升排队次序*/
-        Bool        allow_git_accum;            /*允许礼物价值累计*/
-        uint32_t    minvalue_gift_jump;         /*最小的插队礼物价值*/
-        uint32_t    minvalue_gift_promotion;    /*最小的提升排队次序礼物价值*/
-    } queue_jump_config;    /*插队规则*/
+        char        host_name[DEFAULT_NAME_LEN];    /*主播名称*/
+        Bool        capt_first;                     /*排队舰队优先*/
+        Bool        allow_danmu_queueup;            /*允许礼物排队*/
+        Bool        allow_gift_queueup;             /*允许礼物排队*/
+        uint32_t    minvalue_gift_queueup;          /*最小的排队礼物价值*/
+    } queue_up_config;    /*排队规则*/
 
     struct {
         char        title_color[8];         /*标题颜色*/
-        char        capt_color[8];          /*舰长颜色*/
+        char        capt_color[8];          /*舰队颜色*/
         char        fans_color[8];          /*粉丝牌颜色*/
         char        others_color[8];        /*白嫖颜色*/
     } color_config;         /*颜色配置*/
