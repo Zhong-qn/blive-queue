@@ -18,7 +18,7 @@
 #include "cJSON.h"
 
 #include "config.h"
-#include "blive_queue.h"
+#include "bliveq_internal.h"
 #include "callbacks.h"
 
 
@@ -36,12 +36,12 @@ static int schedule_set_func(void *sched_entity, size_t millisec, blive_schedule
  * @param arg 
  * @return void* 
  */
-static void* timer_thread(void* arg)
+static void* select_engine_thread(void* arg)
 {
     select_engine_t*    engine = (select_engine_t*)arg;
 
     select_engine_perform(engine);
-    blive_loge("timer_thread end\n");
+    blive_loge("select_engine_thread end\n");
     return NULL;
 }
 
@@ -101,29 +101,23 @@ static int parse_config(const char* config_path, blive_ext_cfg* config)
         cJSON_Delete(json_main);
         return BLIVE_ERR_INVALID;
     }
-    config->room_num = cJSON_GetArraySize(json_obj);
-    config->rooms = zero_alloc(sizeof(*config->rooms) * config->room_num);
-    for (int count = 0; count < config->room_num; count++) {
-        config->rooms[count].room_id = cJSON_GetArrayItem(json_obj, count)->valueint;
-    }
+    config->room_id = cJSON_GetArrayItem(json_obj, 0)->valueint;
 
-    /*加载插队规则*/
-    json_obj = cJSON_GetObjectItem(json_main, "插队规则");
+    /*加载排队规则*/
+    json_obj = cJSON_GetObjectItem(json_main, "排队规则");
     if (json_obj != NULL) {
-        config->queue_jump_config.liver_name = cJSON_GetObjectItem(json_obj, "主播名称")->valuestring;
-        config->queue_jump_config.capt_first = cJSON_GetObjectItem(json_obj, "舰长优先")->type == cJSON_True ? True : False;
-        config->queue_jump_config.allow_gift_jump = cJSON_GetObjectItem(json_obj, "允许送礼物插队")->type == cJSON_True ? True : False;
-        config->queue_jump_config.allow_gift_promotion = cJSON_GetObjectItem(json_obj, "允许送礼物提升排队次序")->type == cJSON_True ? True : False;
-        config->queue_jump_config.allow_git_accum = cJSON_GetObjectItem(json_obj, "礼物插队可累计")->type == cJSON_True ? True : False;
-        config->queue_jump_config.minvalue_gift_jump = cJSON_GetObjectItem(json_obj, "礼物插队最低送出礼物价值")->valueint;
-        config->queue_jump_config.minvalue_gift_promotion = cJSON_GetObjectItem(json_obj, "提升1次序所需礼物价值")->valueint;
+        strncpy(config->queue_up_config.host_name, cJSON_GetObjectItem(json_obj, "主播名称")->valuestring, DEFAULT_NAME_LEN - 1);
+        config->queue_up_config.capt_first = cJSON_GetObjectItem(json_obj, "舰队优先")->type == cJSON_True ? True : False;
+        config->queue_up_config.allow_danmu_queueup = cJSON_GetObjectItem(json_obj, "允许弹幕排队")->type == cJSON_True ? True : False;
+        config->queue_up_config.allow_gift_queueup = cJSON_GetObjectItem(json_obj, "允许送礼物排队")->type == cJSON_True ? True : False;
+        config->queue_up_config.minvalue_gift_queueup = cJSON_GetObjectItem(json_obj, "礼物排队最低送出礼物价值")->valueint;
     }
 
     /*加载颜色配置*/
     json_obj = cJSON_GetObjectItem(json_main, "颜色配置");
     if (json_obj != NULL) {
         strncpy(config->color_config.title_color, cJSON_GetObjectItem(json_obj, "标题颜色")->valuestring, 7);
-        strncpy(config->color_config.capt_color, cJSON_GetObjectItem(json_obj, "舰长颜色")->valuestring, 7);
+        strncpy(config->color_config.capt_color, cJSON_GetObjectItem(json_obj, "舰队颜色")->valuestring, 7);
         strncpy(config->color_config.fans_color, cJSON_GetObjectItem(json_obj, "粉丝牌颜色")->valuestring, 7);
         strncpy(config->color_config.others_color, cJSON_GetObjectItem(json_obj, "白嫖颜色")->valuestring, 7);
     }
@@ -144,10 +138,10 @@ static int parse_config(const char* config_path, blive_ext_cfg* config)
     if (json_obj != NULL) {
         tmp_buffer = cJSON_PrintBuffered(cJSON_GetObjectItem(json_obj, "黑名单"), 512, 0);
         config->filter_config.blacklist = cJSON_Parse(tmp_buffer);
-        free(tmp_buffer);
+        cJSON_free(tmp_buffer);
         tmp_buffer = cJSON_PrintBuffered(cJSON_GetObjectItem(json_obj, "白名单"), 512, 0);
         config->filter_config.whitelist = cJSON_Parse(tmp_buffer);
-        free(tmp_buffer);
+        cJSON_free(tmp_buffer);
     }
 
     /*删除临时数据*/
@@ -161,50 +155,52 @@ int main(void)
 {
     pthread_t           timer_pid;
     void*               thrd_ret = NULL;
-    select_engine_t*    engine = NULL;
     blive_queue         queue_entity;
 
     /*加载配置文件*/
     if (parse_config(BLIVE_QUEUE_CFG_PATH, &queue_entity.conf) != BLIVE_ERR_OK) {
-        blive_loge("解析配置文件失败！\n");
+        blive_loge("解析配置文件失败！");
         return ERROR;
     }
 
     /*启动select_engine来实现定时器功能模块*/
-    select_engine_create(&engine);
-    pthread_create(&timer_pid, NULL, timer_thread, engine);
+    select_engine_create(&queue_entity.engine);
+    pthread_create(&timer_pid, NULL, select_engine_thread, queue_entity.engine);
+
+    /*callbacks初始化*/
+    if (callbacks_init(&queue_entity)) {
+        blive_loge("callbacks初始化失败！");
+        return ERROR;
+    }
 
     /*初始化bilibili直播间解析模块*/
     blive_api_init();
-    for (int count = 0; count < queue_entity.conf.room_num; count++) {
-        /*初始化blive*/
-        blive_create(&queue_entity.conf.rooms[count].room_entity, 0, queue_entity.conf.rooms[count].room_id);
-        blive_establish_connection(queue_entity.conf.rooms[count].room_entity, schedule_set_func, engine);
 
-        /*设置接收消息的回调函数*/
-        blive_set_command_callback(queue_entity.conf.rooms[count].room_entity, BLIVE_INFO_DANMU_MSG, danmu_callback, &queue_entity);
+    /*初始化blive*/
+    blive_create(&queue_entity.conf.room_entity, 0, queue_entity.conf.room_id);
+    blive_establish_connection(queue_entity.conf.room_entity, schedule_set_func, queue_entity.engine);
 
-        /*启动监听*/
-        pthread_create(&queue_entity.conf.rooms[count].thread_id, NULL, blive_thread, queue_entity.conf.rooms[count].room_entity);
-    }
+    /*设置接收消息的回调函数*/
+    blive_set_command_callback(queue_entity.conf.room_entity, BLIVE_INFO_DANMU_MSG, danmu_callback, &queue_entity);
+    blive_set_command_callback(queue_entity.conf.room_entity, BLIVE_INFO_SEND_GIFT, send_gift_callback, &queue_entity);
+
+    /*启动监听*/
+    pthread_create(&queue_entity.conf.thread_id, NULL, blive_thread, queue_entity.conf.room_entity);
+
 
     sleep(3600);
 
     /*结束bilibili直播间解析模块*/
-    for (int count = 0; count < queue_entity.conf.room_num; count++) {
-        blive_force_stop(queue_entity.conf.rooms[count].room_entity);
-    }
-    for (int count = 0; count < queue_entity.conf.room_num; count++) {
-        pthread_join(queue_entity.conf.rooms[count].thread_id, &thrd_ret);
-        blive_close_connection(queue_entity.conf.rooms[count].room_entity);
-        blive_destroy(queue_entity.conf.rooms[count].room_entity);
-    }
+    blive_force_stop(queue_entity.conf.room_entity);
+    pthread_join(queue_entity.conf.thread_id, &thrd_ret);
+    blive_close_connection(queue_entity.conf.room_entity);
+    blive_destroy(queue_entity.conf.room_entity);
     blive_api_deinit();
 
     /*结束定时器功能模块*/
-    select_engine_stop(engine);
+    select_engine_stop(queue_entity.engine);
     pthread_join(timer_pid, &thrd_ret);
-    select_engine_destroy(engine);
+    select_engine_destroy(queue_entity.engine);
 
     return 0;
 }
