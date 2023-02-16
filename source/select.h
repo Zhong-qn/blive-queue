@@ -68,7 +68,7 @@ int select_engine_destroy(select_engine_t* engine);
  * @param [in] engine select事件引擎描述结构体
  * @return int 
  */
-int select_engine_run(select_engine_t* engine);
+blive_errno_t select_engine_perform(select_engine_t* engine);
 
 /**
  * @brief 停止select事件引擎的运行

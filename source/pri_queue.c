@@ -19,7 +19,7 @@
 
 #include "utils.h"
 #include "pri_queue.h"
-#include "blive_queue.h"
+#include "bliveq_internal.h"
 
 
 typedef struct heap_element {

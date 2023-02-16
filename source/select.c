@@ -24,7 +24,7 @@
 #include "hash.h"
 #include "pri_queue.h"
 #include "select.h"
-#include "blive_queue.h"
+#include "bliveq_internal.h"
 
 
 #define PRI_QUEUE_SIZE      50

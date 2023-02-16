@@ -25,24 +25,27 @@
     _a > _b ? _a : _b;\
 })
 
+#define WR_FD(pair_fd)              ((pair_fd)[1])
+#define RD_FD(pair_fd)              ((pair_fd)[0])
 #ifdef WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-typedef SOCKET   fd_t;
-
 #define fd_read(fd, buf, size)      recv((fd), (char*)(buf), (size), 0)
 #define fd_write(fd, buf, size)     send((fd), (char*)(buf), (size), 0)
+
+typedef SOCKET   fd_t;
 #else
-typedef int fd_t;
+#include <unistd.h>
 
 #define fd_read                     read
 #define fd_write                    write
+
+typedef int fd_t;
 #endif
-#define WR_FD(pair_fd)              ((pair_fd)[1])
-#define RD_FD(pair_fd)              ((pair_fd)[0])
 
 typedef enum blive_standard_errno_e {
+    BLIVE_ERR_TERMINATE = -7,  /* 执行被终止 */
     BLIVE_ERR_NOTEXSIT = -6,   /* 所请求的资源不存在 */
     BLIVE_ERR_RESOURCE = -5,   /* 资源不足，如队列满、数组满等 */
     BLIVE_ERR_OUTOFMEM = -4,   /* 内存不足 */
@@ -53,10 +56,47 @@ typedef enum blive_standard_errno_e {
 } blive_errno_t;
 
 
+#define list_entry(ptr, type, member)       container_of(ptr, type, member)
+#define container_of(ptr, type, member)     ({ \
+	        const typeof(((type *)0)->member) *__mptr = (ptr); \
+	        (type *)((char *)__mptr - offsetof(type, member)); \
+        })
+
+typedef struct list {
+    struct list* prev;
+    struct list* next;
+} list;
+
+/*将链表节点初始化为环形*/
+#define LIST_NODE_INIT(node)        do { \
+        (node)->prev = (node); \
+        (node)->next = (node); \
+    } while (0)
+
+/*将src节点插入链表中的dst节点的后方*/
+#define LIST_APPEND_REAR(dst, src)  do { \
+        (src)->next = (dst)->next;\
+        (src)->prev = (dst);\
+        (dst)->next->prev = (src);\
+        (dst)->next = (src);\
+    } while (0)
+
+/*将src节点插入链表中的dst节点的前方*/
+#define LIST_APPEND_AHEAD(dst, src)  do { \
+        (src)->prev = (dst)->prev;\
+        (src)->next = (dst);\
+        (dst)->prev->next = (src);\
+        (dst)->prev = (src);\
+    } while (0)
+
+#define LIST_SUBTRACT(dst)      do { \
+        (dst)->prev->next = (dst)->next;\
+        (dst)->next->prev = (dst)->prev;\
+    } while (0)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 
 static inline void* zero_alloc(size_t size)
 {
