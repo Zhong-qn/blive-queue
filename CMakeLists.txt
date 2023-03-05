@@ -62,18 +62,19 @@ set(EXECUTABLE_OUTPUT_PATH ${BLIVE_QUEUE_BUILD_DIR}/output/)
 endif()
 
 include_directories(${BLIVE_QUEUE_DIR}/include
-                    ${BLIVE_QUEUE_DIR}/source)
+                    ${BLIVE_QUEUE_DIR}/source
+                    ${BLIVE_QUEUE_DIR}/source/utils)
 
 link_directories(./build/output/lib/)
 
 
 set(BLIVE_QUEUE_SRC     ${BLIVE_QUEUE_DIR}/source/main.c
-                        ${BLIVE_QUEUE_DIR}/source/hash.c
-                        ${BLIVE_QUEUE_DIR}/source/pri_queue.c
                         ${BLIVE_QUEUE_DIR}/source/callbacks.c
-                        ${BLIVE_QUEUE_DIR}/source/queue_list.c
-                        ${BLIVE_QUEUE_DIR}/source/select.c
-                        ${BLIVE_QUEUE_DIR}/source/http.c
+                        ${BLIVE_QUEUE_DIR}/source/utils/qlist.c
+                        ${BLIVE_QUEUE_DIR}/source/utils/hash.c
+                        ${BLIVE_QUEUE_DIR}/source/utils/pri_queue.c
+                        ${BLIVE_QUEUE_DIR}/source/utils/select.c
+                        ${BLIVE_QUEUE_DIR}/source/utils/httpd.c
                         )
 
 

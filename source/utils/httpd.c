@@ -20,7 +20,7 @@
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
 #endif
-#include "http_server.h"
+#include "httpd.h"
 #include "bliveq_internal.h"
 
 
@@ -31,7 +31,20 @@ typedef enum {
     HTTP_NOTFOUND,
 } http_file;
 
-static struct {
+typedef struct {
+    const char*   html_label_name;
+    void    (*callback)(char* dst, void* context);
+    void*   context;
+} http_inject_unit;
+
+struct httpd_handler {
+    fd_t                httpd_socket;
+    uint32_t            html_cur_inject_num;
+    http_inject_unit    injection_list[MAX_INJECTION_NUM];
+};
+
+
+static const struct {
     char*   request_path;
     char*   filepath;
     char*   content_type;
@@ -41,59 +54,80 @@ static struct {
     {"",        "./config/htdocs/404.html",        "text/html",     "HTTP/1.0 404 Not Found\r\n"},
 };
 
-static int                  html_cur_inject_num = 0;
-static http_inject_unit     injection_list[MAX_INJECTION_NUM];
-
 
 static int get_filename(char* buf);
-static blive_errno_t http_sendfile(fd_t fd, http_file file);
-
-static void do_html_inject(char* dst);
-static void refresh_inject(char* dst, void* context);
-static blive_errno_t html_injection(const char* inject_word, void (*callback)(char*, void*), void* context);
+static blive_errno_t http_sendfile(fd_t fd, http_file file, httpd_handler* handler);
+static void do_html_inject(char* dst, httpd_handler* handler);
 
 
-blive_errno_t http_init(blive_queue* entity)
+
+blive_errno_t http_create(httpd_handler** handler, const char* ip, uint16_t port)
 {
-    struct sockaddr_in saddr;
-    int res = 0;
+    httpd_handler*      new_httpd = NULL;
+    struct sockaddr_in  saddr;
+    int                 res = 0;
+
+    if (handler == NULL) {
+        return BLIVE_ERR_NULLPTR;
+    }
+    new_httpd = zero_alloc(sizeof(httpd_handler));
+    if (new_httpd == NULL) {
+        return BLIVE_ERR_OUTOFMEM;
+    }
+
 #ifdef WIN32
     WORD sockVersion = MAKEWORD(2, 2);
     WSADATA wsaData;
     if (WSAStartup(sockVersion, &wsaData) != 0) {
-        return ERROR;
+        return BLIVE_ERR_UNKNOWN;
     }
 #endif
-    entity->http_fd = socket(AF_INET, SOCK_STREAM, 0);
+    new_httpd->httpd_socket = socket(AF_INET, SOCK_STREAM, 0);
 
-    memset(&saddr,0,sizeof(saddr));
+    /*bind*/
+    memset(&saddr, 0, sizeof(saddr));
     saddr.sin_family = AF_INET;
-    saddr.sin_port = htons(8899);
-    saddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    res = bind(entity->http_fd, (struct sockaddr*)&saddr, sizeof(saddr));
+    saddr.sin_port = htons(port);
+    saddr.sin_addr.s_addr = inet_addr(ip);
+    res = bind(new_httpd->httpd_socket, (struct sockaddr*)&saddr, sizeof(saddr));
     if (res == -1) {
         blive_loge("bind error\n");
         return BLIVE_ERR_UNKNOWN;
     }
-    res = listen(entity->http_fd, 5);
+    /*listen*/
+    res = listen(new_httpd->httpd_socket, 10);
     if (res == -1) {
         blive_loge("listen error\n");
         return BLIVE_ERR_UNKNOWN;
     }
 
-    // html_injection("<queuelist_injection>", NULL, entity);
-    html_injection("__refresh_injection__", refresh_inject, NULL);
+    *handler = new_httpd;
+    return BLIVE_ERR_OK;
+}
+
+blive_errno_t http_destroy(httpd_handler* handler)
+{
+    if (handler == NULL) {
+        return BLIVE_ERR_NULLPTR;
+    }
+
+    if (handler->httpd_socket) {
+        shutdown(handler->httpd_socket, SHUT_RDWR);
+    }
+    free(handler);
 
     return BLIVE_ERR_OK;
 }
 
-blive_errno_t http_perform(blive_queue* entity)
+blive_errno_t http_perform(httpd_handler* handler)
 {
     struct sockaddr_in  addr;
-    socklen_t   socklen = sizeof(struct sockaddr);
-    fd_t        conn_fd = FD_NULL;
-    int         buffer_len = 0;
-    char        buffer[1024] = {0};
+    socklen_t           socklen = sizeof(struct sockaddr);
+    fd_t                conn_fd = FD_NULL;
+    int                 buffer_len = 0;
+    char                buffer[1024] = {0};
+    int                 file = HTTP_NOTFOUND;
+
 #ifdef WIN32
     WORD sockVersion = MAKEWORD(2, 2);
     WSADATA wsaData;
@@ -103,53 +137,55 @@ blive_errno_t http_perform(blive_queue* entity)
 #endif
 
     while (1) {
-        int   file = HTTP_NOTFOUND;
-
-        conn_fd = accept(entity->http_fd, (struct sockaddr*)&addr, &socklen);
+        /*接受tcp连接*/
+        conn_fd = accept(handler->httpd_socket, (struct sockaddr*)&addr, &socklen);
         blive_logd("recv socket: %d, %d", conn_fd, errno);
 
+        /*读取http请求*/
         buffer_len = fd_read(conn_fd, buffer, sizeof(buffer) - 1);
         if (buffer_len < 0) {
             blive_loge("read %d(%s)!", buffer_len, strerror(errno));
-            break;
+            shutdown(conn_fd, SHUT_RDWR);
+            continue;
         }
         blive_logd("%s", buffer);
+
+        /*解析http请求*/
         file = get_filename(buffer);
         if (file < 0) {
             blive_loge("remote closed");
-            break;
+            shutdown(conn_fd, SHUT_RDWR);
+            continue;
         }
         blive_logd("get file %d", file);
-        http_sendfile(conn_fd, file);
+
+        /*发送http响应*/
+        http_sendfile(conn_fd, file, handler);
         memset(buffer, 0, sizeof(buffer));
         shutdown(conn_fd, SHUT_RDWR);
     }
 
     return BLIVE_ERR_OK;
-
 }
 
-blive_errno_t http_html_injection(const char* inject_word, void (*callback)(char*, void*), void* context)
+blive_errno_t http_html_injection(httpd_handler* handler, const char* inject_word, void (*callback)(char*, void*), void* context)
 {
-    if (inject_word == NULL || callback == NULL) {
+    if (handler == NULL || inject_word == NULL || callback == NULL) {
         return BLIVE_ERR_NULLPTR;
     }
-
-    return html_injection(inject_word, callback, context);
-}
-
-static blive_errno_t html_injection(const char* inject_word, void (*callback)(char*, void*), void* context)
-{
-    if (html_cur_inject_num == MAX_INJECTION_NUM) {
+    if (handler->html_cur_inject_num == MAX_INJECTION_NUM) {
         return BLIVE_ERR_RESOURCE;
     }
 
-    injection_list[html_cur_inject_num].html_label_name = inject_word;
-    injection_list[html_cur_inject_num].callback = callback;
-    injection_list[html_cur_inject_num].context = context;
-    html_cur_inject_num++;
+    handler->injection_list[handler->html_cur_inject_num].html_label_name = inject_word;
+    handler->injection_list[handler->html_cur_inject_num].callback = callback;
+    handler->injection_list[handler->html_cur_inject_num].context = context;
+    handler->html_cur_inject_num++;
+
     return BLIVE_ERR_OK;
 }
+
+
 
 static int get_filename(char* buf)
 {
@@ -157,7 +193,7 @@ static int get_filename(char* buf)
     http_file   file = HTTP_HOME;
 
     if (s == NULL) {
-        blive_loge("request message invalid");
+        blive_loge("request message invalid:\r\n%s", buf);
         return BLIVE_ERR_INVALID;
     }
 
@@ -180,7 +216,7 @@ static int get_filename(char* buf)
     return HTTP_NOTFOUND;
 }
 
-static blive_errno_t http_sendfile(fd_t fd, http_file file)
+static blive_errno_t http_sendfile(fd_t fd, http_file file, httpd_handler* handler)
 {
     FILE*   fp = NULL;
     char    data[20480] = {0};
@@ -201,38 +237,32 @@ static blive_errno_t http_sendfile(fd_t fd, http_file file)
     fd_write(fd, content_type, strlen(content_type));
     fd_write(fd, "\r\n", 2);
 
+    /*发送html文件，并在其中进行html标签的注入*/
     fgets(data, sizeof(data), fp);
     while (!feof(fp)) {
         /*如果配置了http注入，进行http注入部分的替换*/
-        do_html_inject(data);
+        do_html_inject(data, handler);
         fd_write(fd, data, strlen(data));
         fgets(data, sizeof(data), fp);
     }
+    do_html_inject(data, handler);
+    fd_write(fd, data, strlen(data));
 
     fclose(fp);
-    
     return BLIVE_ERR_OK;
 }
 
-static inline void do_html_inject(char* dst)
+static inline void do_html_inject(char* dst, httpd_handler* handler)
 {
-    if (html_cur_inject_num) {
-        for (int count = 0; count < html_cur_inject_num; count++) {
-            if (strstr(dst, injection_list[count].html_label_name) != NULL) {
-                memset(dst, 0, strlen(dst));
-                injection_list[count].callback(dst, injection_list[count].context);
-            }
-        }
-    }
-    return ;
-}
-
-static void refresh_inject(char* dst, void* context)
-{
-    if (context != NULL) {
+    if (!handler->html_cur_inject_num) {
         return ;
     }
-    strcat(dst, "<script>function aoto_refresh(){window.location.reload();};setTimeout('aoto_refresh()',2000);</script>\r\n");
+    for (int count = 0; count < handler->html_cur_inject_num; count++) {
+        if (strstr(dst, handler->injection_list[count].html_label_name) != NULL) {
+            memset(dst, 0, strlen(dst));
+            handler->injection_list[count].callback(dst, handler->injection_list[count].context);
+        }
+    }
     return ;
 }
 

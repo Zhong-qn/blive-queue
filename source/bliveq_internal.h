@@ -15,16 +15,17 @@
 #include "pri_queue.h"
 #include "qlist.h"
 #include "select.h"
+#include "httpd.h"
 #include "blive_api/blive_api.h"
 
 
 typedef struct {
     blive_ext_cfg       conf;
-    fd_t                http_fd;            /*HTTP服务端使用的socket文件描述符*/
     fd_t                qlist_fd[2];
     select_engine_t*    engine;
     blive_qlist*        qlist;
     pri_queue_t*        queue;
+    httpd_handler*      httpd;
 } blive_queue;
 
 

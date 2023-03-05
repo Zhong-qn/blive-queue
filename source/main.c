@@ -20,7 +20,7 @@
 #include "config.h"
 #include "bliveq_internal.h"
 #include "callbacks.h"
-#include "http_server.h"
+#include "httpd.h"
 
 
 #define BLIVE_QUEUE_CFG_PATH        "./config/pdjcfg.json"
@@ -168,6 +168,9 @@ int main(void)
     select_engine_create(&queue_entity.engine);
     pthread_create(&timer_pid, NULL, select_engine_thread, queue_entity.engine);
 
+    /*http服务器初始化*/
+    http_create(&queue_entity.httpd, "127.0.0.1", 8899);
+
     /*callbacks初始化*/
     if (callbacks_init(&queue_entity)) {
         blive_loge("callbacks初始化失败！");
@@ -188,8 +191,7 @@ int main(void)
     /*启动监听*/
     pthread_create(&queue_entity.conf.thread_id, NULL, blive_thread, queue_entity.conf.room_entity);
 
-    http_init(&queue_entity);
-    http_perform(&queue_entity);
+    http_perform(queue_entity.httpd);
 
     /*结束bilibili直播间解析模块*/
     blive_force_stop(queue_entity.conf.room_entity);

@@ -231,7 +231,7 @@ blive_errno_t qlist_subtract(blive_qlist* qlist, uint32_t anchorage)
     return BLIVE_ERR_OK;
 }
 
-blive_errno_t qlist_foreach(blive_qlist* qlist, qlist_foreach_cb cb, void* context)
+blive_errno_t qlist_foreach(blive_qlist* qlist, Bool invert_seq, qlist_foreach_cb cb, void* context)
 {
     list*       list_ptr = &qlist->list_head;
     qlist_unit* each_unit = NULL;
@@ -246,7 +246,11 @@ blive_errno_t qlist_foreach(blive_qlist* qlist, qlist_foreach_cb cb, void* conte
 
     /*qlist不为空，遍历链表查找锚定值是否有相同的，如果有返回找到的单元*/
     for (int count = 0; count < qlist->elem_num; count++) {
-        list_ptr = list_ptr->prev;
+        if (invert_seq) {
+            list_ptr = list_ptr->prev;
+        } else {
+            list_ptr = list_ptr->next;
+        }
         each_unit = list_entry(list_ptr, qlist_unit, list_node);
         if (cb(each_unit->anchorage, &each_unit->data, context) == False) {
             pthread_mutex_unlock(&qlist->lock);

@@ -18,7 +18,7 @@
 #include "config.h"
 #include "bliveq_internal.h"
 #include "qlist.h"
-#include "http_server.h"
+#include "httpd.h"
 
 
 typedef struct {
@@ -149,15 +149,36 @@ static Bool qlist_foreach_make_text(uint32_t anchorage, const qlist_unit_data* d
     return True;
 }
 
+/**
+ * @brief 注入排队列表
+ * 
+ * @param dst 目的字符串
+ * @param context blive_queue对象
+ */
 static void liveroom_qlist_make_text(char* dst, void* context)
 {
     blive_queue*    queue_entity = (blive_queue*)context;
     blive_errno_t   err = BLIVE_ERR_OK;
 
-    if ((err = qlist_foreach(queue_entity->qlist, qlist_foreach_make_text, dst)) != BLIVE_ERR_OK) {
+    if ((err = qlist_foreach(queue_entity->qlist, False, qlist_foreach_make_text, dst)) != BLIVE_ERR_OK) {
         blive_loge("foreach get qlist text file failed!(%d)", err);
     }
 
+    return ;
+}
+
+/**
+ * @brief 定时2秒刷新html页面
+ * 
+ * @param dst 目的字符串
+ * @param context 不使用
+ */
+static void refresh_html(char* dst, void* context)
+{
+    if (context != NULL) {
+        return ;
+    }
+    strcat(dst, "<script>function aoto_refresh(){window.location.reload();};setTimeout('aoto_refresh()',2000);</script>\r\n");
     return ;
 }
 
@@ -177,7 +198,8 @@ blive_errno_t callbacks_init(blive_queue* queue_entity)
     select_engine_fd_add_forever(queue_entity->engine, RD_FD(queue_entity->qlist_fd), liveroom_info_recv, queue_entity);
 
     /*在index.html中添加动态注入的排队列表*/
-    http_html_injection("__queuelist_injection__", liveroom_qlist_make_text, queue_entity);
+    http_html_injection(queue_entity->httpd, "__refresh_injection__", refresh_html, NULL);
+    http_html_injection(queue_entity->httpd, "__queuelist_injection__", liveroom_qlist_make_text, queue_entity);
 
     return BLIVE_ERR_OK;
 }
