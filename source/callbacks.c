@@ -29,24 +29,6 @@ typedef struct {
 static void liveroom_info_recv(fd_t fd, void* data);
 
 
-blive_errno_t callbacks_init(blive_queue* queue_entity)
-{
-    blive_errno_t errno = BLIVE_ERR_OK;
-
-    if (_socketpair(queue_entity->qlist_fd)) {
-        return BLIVE_ERR_UNKNOWN;
-    }
-
-    errno = qlist_create(&queue_entity->qlist);
-    if (errno) {
-        return errno;
-    }
-    select_engine_fd_add_forever(queue_entity->engine, RD_FD(queue_entity->qlist_fd), liveroom_info_recv, queue_entity);
-
-    return BLIVE_ERR_OK;
-}
-
-
 static Bool search_user_in_list(const user_info* info, cJSON* list)
 {
     int         arr_num = 0;
@@ -117,6 +99,7 @@ static void liveroom_info_recv(fd_t fd, void* data)
         if (queue_entity->conf.queue_up_config.capt_first && info.data.fleet_lv) {
             weight = (FLEET_LV_MAX - info.data.fleet_lv) + 2;
         }
+        info.data.weight = weight;
         // blive_loge("qlist_append_update");
         qlist_append_update(queue_entity->qlist, info.data.danmu_sender_uid, &info.data);
         break;
@@ -145,6 +128,7 @@ static void liveroom_info_recv(fd_t fd, void* data)
         if (queue_entity->conf.queue_up_config.capt_first && info.data.fleet_lv) {
             weight = (FLEET_LV_MAX - info.data.fleet_lv) + 2 + 3;
         }
+        info.data.weight = weight;
         // blive_loge("qlist_append_update");
         qlist_append_update(queue_entity->qlist, info.data.danmu_sender_uid, &info.data);
         break;
@@ -153,6 +137,24 @@ static void liveroom_info_recv(fd_t fd, void* data)
         break;
     }
     return ;
+}
+
+
+blive_errno_t callbacks_init(blive_queue* queue_entity)
+{
+    blive_errno_t err = BLIVE_ERR_OK;
+
+    if (_socketpair(queue_entity->qlist_fd)) {
+        return BLIVE_ERR_UNKNOWN;
+    }
+
+    err = qlist_create(&queue_entity->qlist);
+    if (err) {
+        return err;
+    }
+    select_engine_fd_add_forever(queue_entity->engine, RD_FD(queue_entity->qlist_fd), liveroom_info_recv, queue_entity);
+
+    return BLIVE_ERR_OK;
 }
 
 void danmu_callback(blive* entity, const cJSON* msg, blive_queue* queue_entity)

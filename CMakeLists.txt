@@ -49,7 +49,7 @@ if(DEFINED TMP_FILES_DIR)
 message("already difined cache file directory: ${TMP_FILES_DIR}")
 else()
 message("not difined cache file directory, using default:  ${BLIVE_QUEUE_DIR}/CMakeCaches/")
-set(TMP_FILES_DIR ${BLIVE_QUEUE_DIR}/CMakeCaches)
+set(TMP_FILES_DIR ${BLIVE_QUEUE_DIR}/CMakeFiles/blive_queue)
 endif()
 
 # 创建可执行文件路径
@@ -72,14 +72,16 @@ set(BLIVE_QUEUE_SRC     ${BLIVE_QUEUE_DIR}/source/main.c
                         ${BLIVE_QUEUE_DIR}/source/pri_queue.c
                         ${BLIVE_QUEUE_DIR}/source/callbacks.c
                         ${BLIVE_QUEUE_DIR}/source/queue_list.c
-                        ${BLIVE_QUEUE_DIR}/source/select.c)
+                        ${BLIVE_QUEUE_DIR}/source/select.c
+                        ${BLIVE_QUEUE_DIR}/source/http.c
+                        )
 
 
 file(COPY  ${BLIVE_QUEUE_DIR}/config/pdjcfg.json   DESTINATION ${EXECUTABLE_OUTPUT_PATH}/config)
 
 add_compile_options(-g -Wall -fPIC)
 
-add_subdirectory(supports/blive-api-c ${BLIVE_QUEUE_DIR}/CMakeCaches/blive_api)
+add_subdirectory(supports/blive-api-c ${BLIVE_QUEUE_DIR}/CMakeFiles/blive_api)
 
 add_executable(blive_queue ${BLIVE_QUEUE_SRC})
 add_definitions(-DBLIVE_API_DEBUG_INFO)

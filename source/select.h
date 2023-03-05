@@ -120,6 +120,13 @@ int select_engine_fd_add_forever(select_engine_t* engine, fd_t fd, select_fd_cb 
  */
 int select_engine_fd_del(select_engine_t* engine, fd_t fd);
 
+/**
+ * @brief 查看文件描述符的可读长度
+ * 
+ * @param [in] fd 文件描述符 
+ * @return int32_t 
+ */
+int32_t fd_readable(fd_t fd);
 #ifdef __cplusplus
 }
 #endif

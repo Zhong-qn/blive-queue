@@ -419,7 +419,7 @@ static uint32_t __fd_poll_hash_func(const char *key)
     return (uint32_t)atoi(key);
 }
 
-static int32_t __fd_readable(fd_t fd)
+int32_t fd_readable(fd_t fd)
 {
     unsigned long int read_len = 0;
 
@@ -457,7 +457,7 @@ static void __manage_fd_callback(fd_t manage_fd, void* context)
     engine_manage_event_t       event;
     select_engine_t*         engine = (select_engine_t*)context;
 
-    while (__fd_readable(manage_fd)) {
+    while (fd_readable(manage_fd)) {
         fd_read(manage_fd, &event, sizeof(engine_manage_event_t));
         blive_logd("process manage message %d", event);
         switch (event) {

@@ -35,6 +35,7 @@
 #define fd_write(fd, buf, size)     send((fd), (char*)(buf), (size), 0)
 
 typedef SOCKET   fd_t;
+#define FD_NULL     0
 #else
 #include <unistd.h>
 
@@ -42,6 +43,7 @@ typedef SOCKET   fd_t;
 #define fd_write                    write
 
 typedef int fd_t;
+#define FD_NULL     0
 #endif
 
 typedef enum blive_standard_errno_e {
