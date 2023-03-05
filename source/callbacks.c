@@ -18,6 +18,7 @@
 #include "config.h"
 #include "bliveq_internal.h"
 #include "qlist.h"
+#include "http_server.h"
 
 
 typedef struct {
@@ -139,6 +140,27 @@ static void liveroom_info_recv(fd_t fd, void* data)
     return ;
 }
 
+static Bool qlist_foreach_make_text(uint32_t anchorage, const qlist_unit_data* data, void* context)
+{
+    char*   dst = (char*)context;
+    int     prefix_datalen = strlen(dst);
+
+    sprintf(dst + prefix_datalen, "<h2>%s\r\n", data->danmu_sender_name);
+    return True;
+}
+
+static void liveroom_qlist_make_text(char* dst, void* context)
+{
+    blive_queue*    queue_entity = (blive_queue*)context;
+    blive_errno_t   err = BLIVE_ERR_OK;
+
+    if ((err = qlist_foreach(queue_entity->qlist, qlist_foreach_make_text, dst)) != BLIVE_ERR_OK) {
+        blive_loge("foreach get qlist text file failed!(%d)", err);
+    }
+
+    return ;
+}
+
 
 blive_errno_t callbacks_init(blive_queue* queue_entity)
 {
@@ -153,6 +175,9 @@ blive_errno_t callbacks_init(blive_queue* queue_entity)
         return err;
     }
     select_engine_fd_add_forever(queue_entity->engine, RD_FD(queue_entity->qlist_fd), liveroom_info_recv, queue_entity);
+
+    /*在index.html中添加动态注入的排队列表*/
+    http_html_injection("__queuelist_injection__", liveroom_qlist_make_text, queue_entity);
 
     return BLIVE_ERR_OK;
 }

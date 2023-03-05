@@ -92,6 +92,15 @@ blive_errno_t qlist_append_update(blive_qlist* qlist, uint32_t anchorage, const 
  */
 blive_errno_t qlist_subtract(blive_qlist* qlist, uint32_t anchorage);
 
+/**
+ * @brief qlist遍历处理
+ * 
+ * @param [in] qlist 权重值实时排队队列实体 
+ * @param [in] cb 回调函数
+ * @param [in] context 回调函数的上下文
+ * @return blive_errno_t 
+ */
+blive_errno_t qlist_foreach(blive_qlist* qlist, qlist_foreach_cb cb, void* context);
 
 #ifdef __cplusplus
 }

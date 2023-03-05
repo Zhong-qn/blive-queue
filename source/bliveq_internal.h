@@ -20,6 +20,7 @@
 
 typedef struct {
     blive_ext_cfg       conf;
+    fd_t                http_fd;            /*HTTP服务端使用的socket文件描述符*/
     fd_t                qlist_fd[2];
     select_engine_t*    engine;
     blive_qlist*        qlist;

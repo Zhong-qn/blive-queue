@@ -20,6 +20,7 @@
 #include "config.h"
 #include "bliveq_internal.h"
 #include "callbacks.h"
+#include "http_server.h"
 
 
 #define BLIVE_QUEUE_CFG_PATH        "./config/pdjcfg.json"
@@ -187,8 +188,8 @@ int main(void)
     /*启动监听*/
     pthread_create(&queue_entity.conf.thread_id, NULL, blive_thread, queue_entity.conf.room_entity);
 
-
-    sleep(3600);
+    http_init(&queue_entity);
+    http_perform(&queue_entity);
 
     /*结束bilibili直播间解析模块*/
     blive_force_stop(queue_entity.conf.room_entity);
