@@ -1,7 +1,7 @@
 /**
- * @file http.c
+ * @file httpd.c
  * @author zhongqiaoning (691365572@qq.com)
- * @brief 
+ * @brief 简易的http服务端，使用html注入来允许修改html页面内容
  * @version 0.1
  * @date 2023-02-26
  * 
