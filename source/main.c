@@ -169,7 +169,7 @@ int main(void)
     pthread_create(&timer_pid, NULL, select_engine_thread, queue_entity.engine);
 
     /*http服务器初始化*/
-    http_create(&queue_entity.httpd, "127.0.0.1", 8899);
+    http_create(&queue_entity.httpd, "127.0.0.1", 9000);
 
     /*callbacks初始化*/
     if (callbacks_init(&queue_entity)) {
@@ -181,7 +181,7 @@ int main(void)
     blive_api_init();
 
     /*初始化blive*/
-    blive_create(&queue_entity.conf.room_entity, 0, queue_entity.conf.room_id);
+    blive_create(&queue_entity.conf.room_entity, 0, queue_entity.conf.room_id, 3);
     blive_establish_connection(queue_entity.conf.room_entity, schedule_set_func, queue_entity.engine);
 
     /*设置接收消息的回调函数*/

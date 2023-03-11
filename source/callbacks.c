@@ -26,6 +26,10 @@ typedef struct {
     qlist_unit_data data;
 } user_info;
 
+typedef struct {
+    char*           dst;
+    blive_queue*    queue_entity;
+} foreach_qlist_data;
 
 static void liveroom_info_recv(fd_t fd, void* data);
 
@@ -75,6 +79,12 @@ static void liveroom_info_recv(fd_t fd, void* data)
         return ;
     }
 
+    /*如果发送取消排队，在qlist中移除*/
+    if (info.data.cancel_queue_up) {
+        qlist_subtract(queue_entity->qlist, info.data.danmu_sender_uid);
+        return ;
+    }
+
     switch (info.info_type) {
     case BLIVE_INFO_DANMU_MSG:  /*说明是观众发送了排队弹幕*/
     {
@@ -101,7 +111,7 @@ static void liveroom_info_recv(fd_t fd, void* data)
             weight = (FLEET_LV_MAX - info.data.fleet_lv) + 2;
         }
         info.data.weight = weight;
-        // blive_loge("qlist_append_update");
+        blive_logd("qlist_append_update %s:%d", info.data.danmu_sender_name, info.data.weight);
         qlist_append_update(queue_entity->qlist, info.data.danmu_sender_uid, &info.data);
         break;
     }
@@ -142,10 +152,19 @@ static void liveroom_info_recv(fd_t fd, void* data)
 
 static Bool qlist_foreach_make_text(uint32_t anchorage, const qlist_unit_data* data, void* context)
 {
-    char*   dst = (char*)context;
-    int     prefix_datalen = strlen(dst);
+    foreach_qlist_data*     fdata = (foreach_qlist_data*)context;
+    int                     prefix_datalen = strlen(fdata->dst);
+    const char*             color_str = NULL;
 
-    sprintf(dst + prefix_datalen, "<h2>%s\r\n", data->danmu_sender_name);
+    if (data->fleet_lv != FLEET_LV_NONE) {
+        color_str = fdata->queue_entity->conf.color_config.capt_color;
+    } else if (data->fans_price_is_cur_liveroom) {
+        color_str = fdata->queue_entity->conf.color_config.fans_color;
+    } else {
+        color_str = fdata->queue_entity->conf.color_config.others_color;
+    }
+
+    sprintf(fdata->dst + prefix_datalen, "<p><font color=\"%s\">%s</font></p>\r\n", color_str, data->danmu_sender_name);
     return True;
 }
 
@@ -157,10 +176,11 @@ static Bool qlist_foreach_make_text(uint32_t anchorage, const qlist_unit_data* d
  */
 static void liveroom_qlist_make_text(char* dst, void* context)
 {
-    blive_queue*    queue_entity = (blive_queue*)context;
-    blive_errno_t   err = BLIVE_ERR_OK;
+    blive_errno_t       err = BLIVE_ERR_OK;
+    foreach_qlist_data  data = {.dst = dst, .queue_entity = (blive_queue*)context};
 
-    if ((err = qlist_foreach(queue_entity->qlist, False, qlist_foreach_make_text, dst)) != BLIVE_ERR_OK) {
+    err = qlist_foreach(data.queue_entity->qlist, False, qlist_foreach_make_text, &data);
+    if (err != BLIVE_ERR_OK && err != BLIVE_ERR_RESOURCE) {
         blive_loge("foreach get qlist text file failed!(%d)", err);
     }
 
@@ -204,7 +224,7 @@ blive_errno_t callbacks_init(blive_queue* queue_entity)
     return BLIVE_ERR_OK;
 }
 
-void danmu_callback(blive* entity, const cJSON* msg, blive_queue* queue_entity)
+void danmu_callback(blive* entity, const cJSON* msg, blive_queue* queue_entity) 
 {
     cJSON*      json_info_obj = NULL;
     cJSON*      json_obj = NULL;
@@ -299,10 +319,22 @@ void danmu_callback(blive* entity, const cJSON* msg, blive_queue* queue_entity)
         blive_logi("%s(%d): %s\n", info.data.danmu_sender_name, info.data.danmu_sender_uid, danmu_body);
     }
 
+#ifdef BLIVE_API_DEBUG_DEBUG
+    char*   print_buffer = cJSON_PrintBuffered(msg, 2048, 1);
+    if (print_buffer != NULL) {
+        blive_logd("json msg:\n%s\n", print_buffer);
+        cJSON_free(print_buffer);
+    }
+#endif
+
     /*发送的不是排队，直接返回*/
-    // if (strcmp(danmu_body, "排队")) {
-    //     return ;
-    // }
+    if (!strcmp(danmu_body, "排队")) {
+        info.data.cancel_queue_up = False;
+    } else if (!strcmp(danmu_body, "取消排队")) {
+        info.data.cancel_queue_up = True;
+    } else {
+        return ;
+    }
 
     /*如果用户在白名单内，直接进入排队列表*/
     if (search_user_in_list(&info, queue_entity->conf.filter_config.whitelist)) {
@@ -381,14 +413,6 @@ void send_gift_callback(blive* entity, const cJSON* msg, blive_queue* queue_enti
      *    ---       }
      * 
      */
-
-#ifdef BLIVE_API_DEBUG_DEBUG
-    char*   print_buffer = cJSON_PrintBuffered(msg, 1024, 1);
-    if (print_buffer != NULL) {
-        blive_logd("json msg:\n%s\n", print_buffer);
-        cJSON_free(print_buffer);
-    }
-#endif
 
     // if (liveroom_info_send(queue_entity, &info)) {
     //     blive_loge("push msg to qlist failed!");

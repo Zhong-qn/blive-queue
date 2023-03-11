@@ -184,7 +184,7 @@ blive_errno_t qlist_append_update(blive_qlist* qlist, uint32_t anchorage, const 
     unit = qlist_search(qlist, anchorage);
     /*链表中已存在锚定值对应的单元，则更新他的数据*/
     if (unit != NULL) {
-        blive_logd("update qlist anchorage %u's weight from %u to %u", anchorage, unit->weight, weight);
+        blive_logi("update qlist anchorage %u's weight from %u to %u", anchorage, unit->data.weight, data->weight);
         memcpy(&unit->data, data, sizeof(qlist_unit_data));
         retval = BLIVE_ERR_OK;
     /*链表中不存在锚定值对应的单元，则创建一个新单元用于存储*/
@@ -194,13 +194,15 @@ blive_errno_t qlist_append_update(blive_qlist* qlist, uint32_t anchorage, const 
             blive_loge("out of mem!");
             retval = BLIVE_ERR_OUTOFMEM;
         } else {
-            blive_logd("create qlist new unit: anchorage %u, weight %u", anchorage, weight);
+            blive_logi("create qlist new unit: anchorage %u, weight %u", anchorage, data->weight);
             LIST_NODE_INIT(&unit->list_node);
             unit->anchorage = anchorage;
             memcpy(&unit->data, data, sizeof(qlist_unit_data));
             retval = qlist_append(qlist, unit);
             if (!retval) {
                 qlist->elem_num++;
+            } else {
+                blive_loge("unknown error");
             }
         }
     }
@@ -216,6 +218,7 @@ blive_errno_t qlist_subtract(blive_qlist* qlist, uint32_t anchorage)
     pthread_mutex_lock(&qlist->lock);
     unit = qlist_search(qlist, anchorage);
     if (unit == NULL) {
+        pthread_mutex_unlock(&qlist->lock);
         blive_logi("subtract failed: not found anchorage %u", anchorage);
         return BLIVE_ERR_RESOURCE;
     }

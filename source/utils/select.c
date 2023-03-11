@@ -52,9 +52,7 @@ struct select_engine_t {
     pri_queue_t*        event_queue;
     hash_t*             fd_poll;
     fd_set              read_fds;
-#ifndef WIN32
     fd_t                max_fd;
-#endif
     Bool                need_continue;
     Bool                has_reset;
     pthread_mutex_t     running_flag;   /* 是否在运行的标志位 */
@@ -253,11 +251,7 @@ blive_errno_t select_engine_perform(select_engine_t* engine)
             select_tm = &tm_wait;
         }
 
-#ifdef WIN32
-        select_ret = select(0, &engine->read_fds, NULL, NULL, select_tm);
-#else
         select_ret = select(engine->max_fd + 1, &engine->read_fds, NULL, NULL, select_tm);
-#endif
         blive_logd("select_ret=%d", select_ret);
 
         /* 解锁，此后将会执行回调函数。此时调整select引擎，则不需要进行reload */

@@ -39,8 +39,8 @@ typedef SOCKET   fd_t;
 #else
 #include <unistd.h>
 
-#define fd_read                     read
-#define fd_write                    write
+#define fd_read(fd, buf, size)      recv((fd), (char*)(buf), (size), MSG_NOSIGNAL)
+#define fd_write(fd, buf, size)     send((fd), (char*)(buf), (size), MSG_NOSIGNAL)
 
 typedef int fd_t;
 #define FD_NULL     0

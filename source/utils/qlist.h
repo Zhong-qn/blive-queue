@@ -33,6 +33,7 @@ typedef struct {
     char                danmu_sender_name[DEFAULT_NAME_LEN];    /*昵称*/
     uint32_t            danmu_sender_uid;                       /*uid*/
     blive_fleet_level   fleet_lv;                               /*舰队等级*/
+    Bool                cancel_queue_up;                        /*是否取消排队*/
     Bool                is_hostoom_manager;                     /*是否是房管*/
     Bool                fans_price_is_cur_liveroom;             /*粉丝牌是当前直播间的*/
     uint32_t            fans_price_level;                       /*粉丝牌等级*/

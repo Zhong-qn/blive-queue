@@ -66,6 +66,7 @@ blive_errno_t http_create(httpd_handler** handler, const char* ip, uint16_t port
     httpd_handler*      new_httpd = NULL;
     struct sockaddr_in  saddr;
     int                 res = 0;
+    int                 val_1 = 1;
 
     if (handler == NULL) {
         return BLIVE_ERR_NULLPTR;
@@ -91,9 +92,10 @@ blive_errno_t http_create(httpd_handler** handler, const char* ip, uint16_t port
     saddr.sin_addr.s_addr = inet_addr(ip);
     res = bind(new_httpd->httpd_socket, (struct sockaddr*)&saddr, sizeof(saddr));
     if (res == -1) {
-        blive_loge("bind error\n");
+        blive_loge("bind error(%s)\n", strerror(errno));
         return BLIVE_ERR_UNKNOWN;
     }
+    setsockopt(new_httpd->httpd_socket, SOL_SOCKET, SO_REUSEADDR, &val_1, sizeof(int));
     /*listen*/
     res = listen(new_httpd->httpd_socket, 10);
     if (res == -1) {
@@ -160,7 +162,9 @@ blive_errno_t http_perform(httpd_handler* handler)
         blive_logd("get file %d", file);
 
         /*发送http响应*/
-        http_sendfile(conn_fd, file, handler);
+        if (http_sendfile(conn_fd, file, handler) != BLIVE_ERR_OK) {
+            blive_loge("error occurred: %d(%s)", errno, strerror(errno));
+        }
         memset(buffer, 0, sizeof(buffer));
         shutdown(conn_fd, SHUT_RDWR);
     }
@@ -232,24 +236,40 @@ static blive_errno_t http_sendfile(fd_t fd, http_file file, httpd_handler* handl
     status_line = httpfile_map[file].status_line;
     snprintf(content_type, 255, "Content-Type: %s\r\n", httpfile_map[file].content_type);
 
-    fd_write(fd, status_line, strlen(status_line));
-    fd_write(fd, server_field, strlen(server_field));
-    fd_write(fd, content_type, strlen(content_type));
-    fd_write(fd, "\r\n", 2);
+    if (fd_write(fd, status_line, strlen(status_line)) < 0) {
+        goto _WRITE_ERR;
+    }
+    if (fd_write(fd, server_field, strlen(server_field)) < 0) {
+        goto _WRITE_ERR;
+    }
+    if (fd_write(fd, content_type, strlen(content_type)) < 0) {
+        goto _WRITE_ERR;
+    }
+    if (fd_write(fd, "\r\n", 2) < 0) {
+        goto _WRITE_ERR;
+    }
 
     /*发送html文件，并在其中进行html标签的注入*/
     fgets(data, sizeof(data), fp);
     while (!feof(fp)) {
         /*如果配置了http注入，进行http注入部分的替换*/
         do_html_inject(data, handler);
-        fd_write(fd, data, strlen(data));
+        if (fd_write(fd, data, strlen(data)) < 0) {
+            goto _WRITE_ERR;
+        }
         fgets(data, sizeof(data), fp);
     }
     do_html_inject(data, handler);
-    fd_write(fd, data, strlen(data));
+    if (fd_write(fd, data, strlen(data)) < 0) {
+        goto _WRITE_ERR;
+    }
 
     fclose(fp);
     return BLIVE_ERR_OK;
+
+_WRITE_ERR:
+    fclose(fp);
+    return BLIVE_ERR_TERMINATE;
 }
 
 static inline void do_html_inject(char* dst, httpd_handler* handler)
