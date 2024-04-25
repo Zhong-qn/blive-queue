@@ -320,7 +320,7 @@ void danmu_callback(blive* entity, const cJSON* msg, blive_queue* queue_entity)
     }
 
 #ifdef BLIVE_API_DEBUG_DEBUG
-    char*   print_buffer = cJSON_PrintBuffered(msg, 2048, 1);
+    print_buffer = cJSON_PrintBuffered(msg, 2048, 1);
     if (print_buffer != NULL) {
         blive_logd("json msg:\n%s\n", print_buffer);
         cJSON_free(print_buffer);
@@ -338,12 +338,12 @@ void danmu_callback(blive* entity, const cJSON* msg, blive_queue* queue_entity)
 
     /*如果用户在白名单内，直接进入排队列表*/
     if (search_user_in_list(&info, queue_entity->conf.filter_config.whitelist)) {
-        blive_logd("user %s(%d) in whitelist\n", info.danmu_sender_name, info.danmu_sender_uid);
+        blive_logd("user %s(%d) in whitelist\n", info.data.danmu_sender_name, info.data.danmu_sender_uid);
         goto ADD_LIST;
     }
     /*如果用户在黑名单内，直接返回*/
     if (search_user_in_list(&info, queue_entity->conf.filter_config.blacklist)) {
-        blive_logd("user %s(%d) in blacklist, return\n", info.danmu_sender_name, info.danmu_sender_uid);
+        blive_logd("user %s(%d) in blacklist, return\n", info.data.danmu_sender_name, info.data.danmu_sender_uid);
         return ;
     }
 
