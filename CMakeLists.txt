@@ -78,7 +78,7 @@ set(BLIVE_QUEUE_SRC     ${BLIVE_QUEUE_DIR}/source/main.c
                         )
 
 
-file(COPY  ${BLIVE_QUEUE_DIR}/config/pdjcfg.json   DESTINATION ${EXECUTABLE_OUTPUT_PATH}/config)
+file(COPY  ${BLIVE_QUEUE_DIR}/config   DESTINATION ${EXECUTABLE_OUTPUT_PATH})
 
 add_compile_options(-g -Wall -fPIC)
 
